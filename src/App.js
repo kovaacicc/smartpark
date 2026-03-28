@@ -280,6 +280,334 @@ function RegisterPage() {
   );
 }
 
+const AMOUNT_CHIPS = [5, 10, 20, 50, 100, 200];
+
+function fmtCardNumber(raw) {
+  return raw
+    .replace(/\D/g, "")
+    .slice(0, 16)
+    .replace(/(.{4})/g, "$1 ")
+    .trim();
+}
+
+function fmtExpiry(raw) {
+  const d = raw.replace(/\D/g, "").slice(0, 4);
+  return d.length > 2 ? d.slice(0, 2) + "/" + d.slice(2) : d;
+}
+
+function fmtCvc(raw) {
+  return raw.replace(/\D/g, "").slice(0, 4);
+}
+
+function detectCardBrand(num) {
+  const n = num.replace(/\s/g, "");
+  if (/^4/.test(n)) return "Visa";
+  if (/^5[1-5]/.test(n)) return "Mastercard";
+  if (/^3[47]/.test(n)) return "Amex";
+  if (/^6(?:011|5)/.test(n)) return "Discover";
+  return "";
+}
+
+function TopUpModal({ onClose, onSuccess }) {
+  const [amount, setAmount] = useState(20);
+  const [customAmt, setCustomAmt] = useState("");
+  const [method, setMethod] = useState("card");
+  const [cardName, setCardName] = useState("");
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvc, setCardCvc] = useState("");
+  const [aircashPhone, setAircashPhone] = useState("");
+  const [processing, setProcessing] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+
+  const displayAmount = customAmt !== "" ? Number(customAmt) : amount;
+  const brand = detectCardBrand(cardNumber);
+
+  function validate() {
+    if (!Number.isFinite(displayAmount) || displayAmount < 1 || displayAmount > 500) {
+      setError("Amount must be between €1 and €500.");
+      return false;
+    }
+    if (method === "card") {
+      if (!cardName.trim()) { setError("Enter the cardholder name."); return false; }
+      if (cardNumber.replace(/\s/g, "").length < 13) { setError("Enter a valid card number."); return false; }
+      if (!/^\d{2}\/\d{2}$/.test(cardExpiry)) { setError("Enter expiry as MM/YY."); return false; }
+      const [mm, yy] = cardExpiry.split("/").map(Number);
+      const now = new Date();
+      const expYear = 2000 + yy;
+      if (mm < 1 || mm > 12 || expYear < now.getFullYear() || (expYear === now.getFullYear() && mm < now.getMonth() + 1)) {
+        setError("Card appears to be expired."); return false;
+      }
+      if (cardCvc.length < 3) { setError("Enter your CVV (3–4 digits)."); return false; }
+    }
+    if (method === "aircash") {
+      if (!/^\+?[\d\s\-]{7,}$/.test(aircashPhone)) { setError("Enter a valid phone number."); return false; }
+    }
+    return true;
+  }
+
+  async function submit() {
+    setError("");
+    if (!validate()) return;
+    setProcessing(true);
+    try {
+      await api("/api/wallet/add", {
+        method: "POST",
+        body: JSON.stringify({ amount: displayAmount }),
+      });
+      setDone(true);
+      setTimeout(() => { onSuccess(); onClose(); }, 1800);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setProcessing(false);
+    }
+  }
+
+  const METHODS = [
+    { id: "card", label: "Card" },
+    { id: "apple", label: "Apple Pay" },
+    { id: "google", label: "Google Pay" },
+    { id: "aircash", label: "Aircash" },
+  ];
+
+  return (
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Add funds">
+        <div className="modal-header">
+          <span className="modal-title">Add funds</span>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+
+        <div className="modal-body">
+          {done ? (
+            <div className="pay-success">
+              <div className="pay-success-icon">✓</div>
+              <p>{formatEuro(displayAmount)} added to your wallet</p>
+            </div>
+          ) : (
+            <>
+              <p className="modal-section-label">Amount</p>
+              <div className="amount-chips">
+                {AMOUNT_CHIPS.map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    className={`chip${amount === a && customAmt === "" ? " active" : ""}`}
+                    onClick={() => { setAmount(a); setCustomAmt(""); setError(""); }}
+                  >
+                    €{a}
+                  </button>
+                ))}
+              </div>
+              <div className="custom-amount-wrap">
+                <span className="custom-amount-prefix">€</span>
+                <input
+                  className="custom-amount-input"
+                  placeholder="Custom amount"
+                  inputMode="decimal"
+                  value={customAmt}
+                  onChange={(e) => { setCustomAmt(e.target.value.replace(/[^\d.]/g, "")); setError(""); }}
+                />
+              </div>
+
+              <p className="modal-section-label" style={{ marginTop: "1.25rem" }}>Payment method</p>
+              <div className="method-tabs">
+                {METHODS.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={`method-tab${method === m.id ? " active" : ""}`}
+                    onClick={() => { setMethod(m.id); setError(""); }}
+                  >
+                    {m.id === "apple" && <AppleIcon />}
+                    {m.id === "google" && <GoogleIcon />}
+                    {m.id === "aircash" && <AircashIcon />}
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="method-body">
+                {method === "card" && (
+                  <div className="card-form">
+                    <div className="card-preview">
+                      <div className="card-preview-chip" />
+                      <div className="card-preview-brand">{brand || "CARD"}</div>
+                      <div className="card-preview-number">
+                        {cardNumber
+                          ? cardNumber.padEnd(19, " ").replace(/(.{4})/g, "$1 ").trim()
+                          : "•••• •••• •••• ••••"}
+                      </div>
+                      <div className="card-preview-footer">
+                        <div>
+                          <div className="card-preview-hint">CARDHOLDER</div>
+                          <div className="card-preview-value">{cardName || "FULL NAME"}</div>
+                        </div>
+                        <div>
+                          <div className="card-preview-hint">EXPIRES</div>
+                          <div className="card-preview-value">{cardExpiry || "MM/YY"}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="field-group">
+                      <label className="field-label">Cardholder name</label>
+                      <input
+                        className="field-input"
+                        placeholder="John Smith"
+                        value={cardName}
+                        onChange={(e) => setCardName(e.target.value)}
+                        autoComplete="cc-name"
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Card number</label>
+                      <input
+                        className="field-input"
+                        placeholder="1234 5678 9012 3456"
+                        value={cardNumber}
+                        onChange={(e) => setCardNumber(fmtCardNumber(e.target.value))}
+                        inputMode="numeric"
+                        autoComplete="cc-number"
+                      />
+                    </div>
+                    <div className="field-row">
+                      <div className="field-group" style={{ flex: 1 }}>
+                        <label className="field-label">Expiry</label>
+                        <input
+                          className="field-input"
+                          placeholder="MM/YY"
+                          value={cardExpiry}
+                          onChange={(e) => setCardExpiry(fmtExpiry(e.target.value))}
+                          inputMode="numeric"
+                          autoComplete="cc-exp"
+                        />
+                      </div>
+                      <div className="field-group" style={{ flex: 1 }}>
+                        <label className="field-label">CVV</label>
+                        <input
+                          className="field-input"
+                          placeholder="•••"
+                          type="password"
+                          value={cardCvc}
+                          onChange={(e) => setCardCvc(fmtCvc(e.target.value))}
+                          autoComplete="cc-csc"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {method === "apple" && (
+                  <div className="express-pay-wrap">
+                    <p className="muted" style={{ textAlign: "center", marginBottom: "1rem" }}>
+                      Authenticate with Face ID or Touch ID to confirm {formatEuro(displayAmount)}.
+                    </p>
+                    <button type="button" className="btn-apple-pay" onClick={submit} disabled={processing}>
+                      <AppleIcon color="#fff" size={20} />
+                      {processing ? "Processing…" : "Pay"}
+                    </button>
+                  </div>
+                )}
+
+                {method === "google" && (
+                  <div className="express-pay-wrap">
+                    <p className="muted" style={{ textAlign: "center", marginBottom: "1rem" }}>
+                      Complete payment with your saved Google Pay card.
+                    </p>
+                    <button type="button" className="btn-google-pay" onClick={submit} disabled={processing}>
+                      <GoogleIcon size={20} />
+                      {processing ? "Processing…" : <><span style={{ color: "#4285F4" }}>G</span><span style={{ color: "#EA4335" }}>o</span><span style={{ color: "#FBBC05" }}>o</span><span style={{ color: "#34A853" }}>g</span><span style={{ color: "#4285F4" }}>l</span><span style={{ color: "#EA4335" }}>e</span>&nbsp;Pay</>}
+                    </button>
+                  </div>
+                )}
+
+                {method === "aircash" && (
+                  <div className="card-form">
+                    <div className="aircash-logo-wrap">
+                      <AircashIcon size={28} />
+                      <span className="aircash-brand">Aircash</span>
+                    </div>
+                    <p className="muted" style={{ fontSize: "0.85rem", margin: "0.5rem 0 1rem" }}>
+                      Enter the phone number linked to your Aircash wallet. A payment request will be sent to your Aircash app.
+                    </p>
+                    <div className="field-group">
+                      <label className="field-label">Phone number</label>
+                      <input
+                        className="field-input"
+                        placeholder="+385 91 234 5678"
+                        value={aircashPhone}
+                        onChange={(e) => setAircashPhone(e.target.value)}
+                        inputMode="tel"
+                        autoComplete="tel"
+                      />
+                    </div>
+                    <p className="hint" style={{ marginTop: "0.5rem" }}>
+                      Aircash is available in Croatia, Bosnia & Herzegovina, Slovenia, and Serbia.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {error && <p className="pay-error">{error}</p>}
+
+              {(method === "card" || method === "aircash") && (
+                <button
+                  type="button"
+                  className="btn btn-primary pay-submit"
+                  disabled={processing}
+                  onClick={submit}
+                >
+                  {processing ? (
+                    <span className="pay-spinner" />
+                  ) : (
+                    `Pay ${formatEuro(displayAmount)}`
+                  )}
+                </button>
+              )}
+
+              <p className="pay-secure-note">
+                🔒 Demo mode — no real charge is made
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppleIcon({ color = "currentColor", size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 814 1000" fill={color} aria-hidden="true">
+      <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.5-42.8-154.6-109.3C149.3 698 82 498.4 82 317.2c0-190.9 124.7-292.1 247.9-292.1 62.9 0 115.2 41.5 155.1 41.5 37.8 0 96.7-43.7 166.3-43.7 27.5 0 117.2 1.9 176.7 86.2z" />
+      <path d="M665 220.7c-25.8-29.1-59.5-52.5-108.9-52.5-76.5 0-138.8 53.5-176.5 53.5-40.2 0-95.6-48.4-165.9-48.4-98.8 0-241.3 80.1-241.3 275.9 0 113.3 44.6 233.1 99.7 311.9 47.5 66.9 89 105.8 149.7 105.8 61.1 0 90.8-40.8 163.9-40.8 71.9 0 91.9 40.1 165.9 40.1 72.4 0 121.9-64.5 162.9-124.6 43.9-67.7 61.9-133.6 63.5-136.2-.8-.4-120.5-48.8-120.5-188.6 0-126.6 93.7-183.3 98.5-186.1z" />
+    </svg>
+  );
+}
+
+function GoogleIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
+  );
+}
+
+function AircashIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">
+      <rect width="40" height="40" rx="8" fill="#DC2626" />
+      <text x="20" y="27" textAnchor="middle" fontSize="18" fontWeight="bold" fill="#fff">A</text>
+    </svg>
+  );
+}
+
 function DashboardPage() {
   const { user, refreshUser, setUser, logout } = useAuth();
   const [cars, setCars] = useState([]);
@@ -290,7 +618,7 @@ function DashboardPage() {
   const [profileName, setProfileName] = useState(user?.name || "");
   const [profileEmail, setProfileEmail] = useState(user?.email || "");
   const [carPlate, setCarPlate] = useState("");
-  const [topUp, setTopUp] = useState("20");
+  const [showTopUp, setShowTopUp] = useState(false);
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
 
@@ -368,28 +696,6 @@ function DashboardPage() {
     }
   }
 
-  async function doTopUp() {
-    const amount = Number(topUp);
-    setBusy("wallet");
-    setMsg("");
-    try {
-      const out = await api("/api/wallet/add", {
-        method: "POST",
-        body: JSON.stringify({ amount }),
-      });
-      setMsg(
-        out.devMode
-          ? `Added ${formatEuro(amount)} (dev mode — no Stripe charge).`
-          : `Added ${formatEuro(amount)}.`
-      );
-      await reload();
-    } catch (err) {
-      setMsg(err.message);
-    } finally {
-      setBusy("");
-    }
-  }
-
   async function buySub(plan) {
     setBusy("sub");
     setMsg("");
@@ -429,7 +735,11 @@ function DashboardPage() {
     setMsg("");
     try {
       const rec = await api("/api/parking/stop", { method: "POST", body: JSON.stringify({}) });
-      setMsg(`Stopped. Charged ${formatEuro(rec.charge)}.`);
+      let note = `Session ended. Charged ${formatEuro(rec.charge)}.`;
+      if (rec.breakdown?.subscriptionWaived) note = "Session ended. Free with subscription.";
+      else if (rec.breakdown?.freeFirstHourApplied) note = `Session ended. Saved ${formatEuro(rec.breakdown.freeFirstHourSaving)} (1h free reward). Charged ${formatEuro(rec.charge)}.`;
+      else if (rec.breakdown?.zone2ExtApplied) note = `Session ended. Saved ${formatEuro(rec.breakdown.zone2ExtSaving)} (4th hour 50% off). Charged ${formatEuro(rec.charge)}.`;
+      setMsg(note);
       await reload();
     } catch (err) {
       setMsg(err.message);
@@ -440,35 +750,85 @@ function DashboardPage() {
 
   return (
     <div className="page">
+      {showTopUp && (
+        <TopUpModal
+          onClose={() => setShowTopUp(false)}
+          onSuccess={async () => {
+            setMsg("Funds added successfully.");
+            await reload();
+          }}
+        />
+      )}
+
       <div className="card-grid">
-        <div className="card">
-          <h2>Wallet</h2>
-          <p style={{ fontSize: "1.6rem", margin: "0.25rem 0" }}>
-            {formatEuro(wallet.balance)}
-          </p>
-          <div className="row">
-            <input
-              style={{ width: 100 }}
-              value={topUp}
-              onChange={(e) => setTopUp(e.target.value)}
-              inputMode="decimal"
-            />
-            <button type="button" className="btn btn-primary" disabled={!!busy} onClick={doTopUp}>
-              Add funds
-            </button>
+        <div className="card wallet-card-outer">
+          <div className="wallet-tile">
+            <div className="wallet-tile-top">
+              <span className="wallet-tile-label">Smart Parking Wallet</span>
+              <span className="wallet-tile-logo">SP</span>
+            </div>
+            <div className="wallet-tile-balance">{formatEuro(wallet.balance)}</div>
+            <div className="wallet-tile-bottom">
+              <span className="wallet-tile-sub">Available balance</span>
+              <div className="wallet-tile-dots">
+                <span />
+                <span />
+                <span />
+              </div>
+            </div>
           </div>
-          <p className="hint">Stripe runs only when STRIPE_SECRET_KEY is set; otherwise dev credit.</p>
-          <h3 className="muted" style={{ margin: "1rem 0 0.35rem", fontSize: "0.85rem" }}>
+
+          <button
+            type="button"
+            className="btn btn-primary wallet-add-btn"
+            onClick={() => setShowTopUp(true)}
+          >
+            + Add funds
+          </button>
+
+          <div className="wallet-pay-icons">
+            <span className="wallet-pay-icon apple">
+              <AppleIcon size={13} />
+              <span>Apple Pay</span>
+            </span>
+            <span className="wallet-pay-icon google">
+              <GoogleIcon size={13} />
+              <span>Google Pay</span>
+            </span>
+            <span className="wallet-pay-icon aircash">
+              <AircashIcon size={13} />
+              <span>Aircash</span>
+            </span>
+            <span className="wallet-pay-icon card-icon">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <rect x="1" y="4" width="22" height="16" rx="2" />
+                <line x1="1" y1="10" x2="23" y2="10" />
+              </svg>
+              <span>Card</span>
+            </span>
+          </div>
+
+          <h3 className="muted" style={{ margin: "1rem 0 0.35rem", fontSize: "0.82rem", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>
             Recent transactions
           </h3>
           <ul className="tx-list">
+            {wallet.transactions.length === 0 && (
+              <li><span className="muted">No transactions yet.</span></li>
+            )}
             {wallet.transactions.slice(0, 8).map((t) => (
               <li key={t.id}>
-                <span>{t.description}</span>
-                <span className={t.amount >= 0 ? "tx-amount-pos" : "tx-amount-neg"}>
-                  {t.amount >= 0 ? "+" : ""}
-                  {formatEuro(t.amount)}
-                </span>
+                <div className="tx-desc">
+                  <span className={`tx-dot ${t.amount >= 0 ? "pos" : "neg"}`} />
+                  <span>{t.description}</span>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <span className={t.amount >= 0 ? "tx-amount-pos" : "tx-amount-neg"}>
+                    {t.amount >= 0 ? "+" : ""}{formatEuro(t.amount)}
+                  </span>
+                  <div className="muted" style={{ fontSize: "0.75rem" }}>
+                    {new Date(t.createdAt).toLocaleDateString()}
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
@@ -476,27 +836,38 @@ function DashboardPage() {
 
         <div className="card">
           <h2>Rewards</h2>
-          <p className="muted">Points: {rewards.points}</p>
-          <ul className="tx-list" style={{ maxHeight: 160 }}>
-            {rewards.catalog.map((r) => (
-              <li key={r.id} style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                  <strong>{r.label}</strong>
-                  <span className="muted">{r.costPoints} pts</span>
+          <div className="reward-points-row">
+            <span className="reward-points-value">{rewards.points}</span>
+            <span className="muted">pts available</span>
+          </div>
+          <div className="reward-catalog">
+            {rewards.catalog.map((r) => {
+              const isActive =
+                (r.type === "free_first_hour" && user?.freeFirstHour) ||
+                (r.type === "zone2_extension" && user?.zone2FourthHourHalf);
+              const canAfford = rewards.points >= r.costPoints;
+              return (
+                <div key={r.id} className={`reward-item${isActive ? " reward-active" : ""}`}>
+                  <div className="reward-item-header">
+                    <div className="reward-item-title-row">
+                      <span className="reward-item-label">{r.label}</span>
+                      {isActive && <span className="reward-active-badge">Active</span>}
+                    </div>
+                    <span className="reward-item-pts">{r.costPoints} pts</span>
+                  </div>
+                  <p className="reward-item-desc">{r.description}</p>
+                  <button
+                    type="button"
+                    className={`btn ${isActive ? "btn-ghost" : canAfford ? "btn-primary" : "btn-ghost"} reward-redeem-btn`}
+                    disabled={!!busy || !canAfford || isActive}
+                    onClick={() => redeem(r.id)}
+                  >
+                    {isActive ? "✓ Activated" : canAfford ? "Redeem" : `Need ${r.costPoints - rewards.points} more pts`}
+                  </button>
                 </div>
-                <span className="muted">{r.description}</span>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  style={{ alignSelf: "flex-start", marginTop: 4 }}
-                  disabled={!!busy || rewards.points < r.costPoints}
-                  onClick={() => redeem(r.id)}
-                >
-                  Redeem
-                </button>
-              </li>
-            ))}
-          </ul>
+              );
+            })}
+          </div>
         </div>
 
         <div className="card">
@@ -528,12 +899,34 @@ function DashboardPage() {
                 Zone {session.zone} · started {new Date(session.startTime).toLocaleString()}
               </p>
               <p className="muted">{session.streetName || "Custom location"}</p>
+              {(user?.freeFirstHour || user?.zone2FourthHourHalf) && (
+                <div className="session-reward-notice">
+                  {user?.freeFirstHour && (
+                    <span className="session-reward-tag">🎁 1h free applies</span>
+                  )}
+                  {user?.zone2FourthHourHalf && session.zone === 2 && (
+                    <span className="session-reward-tag">🎁 4th hour 50% off applies</span>
+                  )}
+                </div>
+              )}
               <button type="button" className="btn btn-danger" disabled={!!busy} onClick={stopParking}>
                 Stop &amp; charge wallet
               </button>
             </>
           ) : (
-            <p className="muted">No active session. Start one from the map.</p>
+            <>
+              <p className="muted">No active session. Start one from the map.</p>
+              {(user?.freeFirstHour || user?.zone2FourthHourHalf) && (
+                <div className="session-reward-notice">
+                  {user?.freeFirstHour && (
+                    <span className="session-reward-tag">🎁 1h free ready</span>
+                  )}
+                  {user?.zone2FourthHourHalf && (
+                    <span className="session-reward-tag">🎁 Zone 2 4th hour 50% off ready</span>
+                  )}
+                </div>
+              )}
+            </>
           )}
           <Link className="btn btn-primary" to="/parking-map" style={{ marginTop: "0.75rem" }}>
             Open parking map
@@ -588,12 +981,6 @@ function DashboardPage() {
         <p className="muted" style={{ marginTop: "1rem" }}>
           {msg}
         </p>
-      ) : null}
-      {user?.freeNextParking ? (
-        <p className="muted">You have a free next parking session from rewards.</p>
-      ) : null}
-      {user?.pendingParkingDiscountPercent ? (
-        <p className="muted">Next session discount: {user.pendingParkingDiscountPercent}%</p>
       ) : null}
 
       <button

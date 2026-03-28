@@ -15,25 +15,27 @@ const REWARDS = [
   {
     id: "wallet_2eur",
     label: "€2 wallet credit",
-    description: "Adds €2 to your wallet.",
+    description: "Adds €2 directly to your wallet balance.",
     costPoints: 200,
     type: "wallet",
     value: 2,
   },
   {
-    id: "parking_10pct",
-    label: "10% off next parking",
-    description: "Applies to your next completed session.",
-    costPoints: 120,
-    type: "discount",
-    value: 10,
+    id: "zone2_4th_hour_half",
+    label: "Zone 2 — 4th hour at 50% off",
+    description:
+      "Zone 2 normally allows up to 3 hours at €0.70/h, after which you pay the full €8 day rate. With this reward, your 4th hour is charged at 50% (€0.35) instead of triggering the day rate. Hours 5+ still apply the standard day rate.",
+    costPoints: 105,
+    type: "zone2_extension",
+    value: 50,
   },
   {
-    id: "free_next_session",
-    label: "Free next parking session",
-    description: "Your next parking session has no charge.",
-    costPoints: 400,
-    type: "free_parking",
+    id: "free_1h_parking",
+    label: "1 hour free parking",
+    description:
+      "Your next parking session is free for the first hour in any zone. Time beyond 1 hour is charged at the normal zone rate.",
+    costPoints: 160,
+    type: "free_first_hour",
     value: 1,
   },
 ];
@@ -67,23 +69,15 @@ function getActiveSubscription(store, userId) {
 
 function sanitizeUser(u) {
   if (!u) return null;
-  const {
-    id,
-    email,
-    name,
-    walletBalance,
-    rewardPoints,
-    pendingParkingDiscountPercent,
-    freeNextParking,
-  } = u;
+  const { id, email, name, walletBalance, rewardPoints, freeFirstHour, zone2FourthHourHalf } = u;
   return {
     id,
     email,
     name,
     walletBalance,
     rewardPoints,
-    pendingParkingDiscountPercent: pendingParkingDiscountPercent || 0,
-    freeNextParking: !!freeNextParking,
+    freeFirstHour: !!freeFirstHour,
+    zone2FourthHourHalf: !!zone2FourthHourHalf,
   };
 }
 
@@ -327,17 +321,15 @@ app.post("/api/rewards/redeem", authMiddleware, (req, res) => {
       const user = store.users.find((u) => u.id === req.userId);
       if (!user) throw new Error("NO_USER");
       if (user.rewardPoints < def.costPoints) throw new Error("POINTS");
+      if (def.type === "free_first_hour" && user.freeFirstHour)
+        throw new Error("ALREADY_ACTIVE");
+      if (def.type === "zone2_extension" && user.zone2FourthHourHalf)
+        throw new Error("ALREADY_ACTIVE");
       user.rewardPoints -= def.costPoints;
-      if (def.type === "wallet") {
-        user.walletBalance = round2(user.walletBalance + def.value);
-        addTransaction(store, user.id, "credit", def.value, `Reward: ${def.label}`);
-      } else if (def.type === "discount") {
-        user.pendingParkingDiscountPercent = Math.min(
-          90,
-          (user.pendingParkingDiscountPercent || 0) + def.value
-        );
-      } else if (def.type === "free_parking") {
-        user.freeNextParking = true;
+      if (def.type === "free_first_hour") {
+        user.freeFirstHour = true;
+      } else if (def.type === "zone2_extension") {
+        user.zone2FourthHourHalf = true;
       }
       const redemption = {
         id: crypto.randomUUID(),
@@ -352,6 +344,8 @@ app.post("/api/rewards/redeem", authMiddleware, (req, res) => {
   } catch (e) {
     if (e.message === "POINTS")
       return res.status(400).json({ error: "Not enough points" });
+    if (e.message === "ALREADY_ACTIVE")
+      return res.status(400).json({ error: "This reward is already active on your account" });
     return res.status(400).json({ error: "Could not redeem" });
   }
 });
@@ -406,27 +400,38 @@ app.post("/api/parking/stop", authMiddleware, (req, res) => {
 
   const sub = getActiveSubscription(store, req.userId);
   const user = store.users.find((u) => u.id === req.userId);
+  const h = ceilHours(durationMs);
   const rawBase = baseParkingCharge(session.zone, durationMs);
   let charge = rawBase;
   let breakdown = {
     base: rawBase,
+    durationHours: h,
     subscriptionWaived: false,
-    rewardWaived: false,
-    discountApplied: 0,
+    freeFirstHourApplied: false,
+    freeFirstHourSaving: 0,
+    zone2ExtApplied: false,
+    zone2ExtSaving: 0,
   };
 
   if (sub) {
     charge = 0;
     breakdown.subscriptionWaived = true;
-  } else if (user.freeNextParking) {
-    charge = 0;
-    breakdown.rewardWaived = true;
   } else {
-    const pct = user.pendingParkingDiscountPercent || 0;
-    if (pct > 0) {
-      const discounted = round2(charge * (1 - pct / 100));
-      breakdown.discountApplied = round2(charge - discounted);
+    // 1-hour free reward: subtract the 1-hour rate for the session zone
+    if (user.freeFirstHour) {
+      const oneHourCost = session.zone === 1 ? 1.6 : session.zone === 2 ? 0.7 : 0.12;
+      const saving = round2(Math.min(oneHourCost, charge));
+      charge = round2(charge - saving);
+      breakdown.freeFirstHourApplied = true;
+      breakdown.freeFirstHourSaving = saving;
+    }
+    // Zone 2 4th-hour extension: only activates when ceilHours === 4 in zone 2
+    if (user.zone2FourthHourHalf && session.zone === 2 && h === 4) {
+      const discounted = round2(3 * 0.7 + 0.35); // €2.45 instead of €8
+      const saving = round2(charge - discounted);
       charge = discounted;
+      breakdown.zone2ExtApplied = true;
+      breakdown.zone2ExtSaving = saving;
     }
   }
 
@@ -444,8 +449,9 @@ app.post("/api/parking/stop", authMiddleware, (req, res) => {
       }
       u.rewardPoints += Math.max(1, Math.floor(durationMs / (1000 * 60 * 15)));
 
-      if (breakdown.rewardWaived) u.freeNextParking = false;
-      if (breakdown.discountApplied > 0) u.pendingParkingDiscountPercent = 0;
+      // Consume rewards that were applied
+      if (breakdown.freeFirstHourApplied) u.freeFirstHour = false;
+      if (breakdown.zone2ExtApplied) u.zone2FourthHourHalf = false;
 
       sess.endTime = new Date(end).toISOString();
       sess.status = "completed";

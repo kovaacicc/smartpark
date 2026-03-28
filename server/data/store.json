@@ -5,8 +5,8 @@
       "email": "borna.orsulic2@gmail.com",
       "passwordHash": "$2a$10$OqWPAiyXh16s1KsAWZTWSu4mlEQh92izsmyHlRg5R5FtJ2ECb8WTq",
       "name": "borna",
-      "walletBalance": 19.3,
-      "rewardPoints": 71,
+      "walletBalance": 279.3,
+      "rewardPoints": 331,
       "pendingParkingDiscountPercent": 0,
       "freeNextParking": false
     }
@@ -36,6 +36,110 @@
       "amount": -0.7,
       "description": "Parking zone 2",
       "createdAt": "2026-03-28T09:41:55.803Z"
+    },
+    {
+      "id": "91fa21e3-8d2e-4e00-9dc8-e2809eb5985f",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T10:11:40.471Z"
+    },
+    {
+      "id": "0d50c5e5-4358-4ece-aaf0-686b7c2d043e",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T10:11:41.234Z"
+    },
+    {
+      "id": "5b0666be-3729-443e-bac2-a4728fcc36b1",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T10:11:41.435Z"
+    },
+    {
+      "id": "5f48ef56-6fa4-4860-9970-1f704296bc5b",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T10:11:41.605Z"
+    },
+    {
+      "id": "99516751-90d2-428c-9107-ccb20563d761",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T10:11:41.771Z"
+    },
+    {
+      "id": "2b353c2b-ceef-4dec-8775-a855726d8c5e",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T10:11:41.919Z"
+    },
+    {
+      "id": "eb985f04-2868-41fc-9984-cb568ae2aeb4",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T10:11:44.120Z"
+    },
+    {
+      "id": "0f44848d-75bf-40fb-816c-7ba83e3fcb78",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T10:11:44.283Z"
+    },
+    {
+      "id": "1d4c0466-1c4d-4743-8ae9-c57b565d89fa",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T10:11:44.451Z"
+    },
+    {
+      "id": "b9def986-1a1d-43d0-b471-c8840544d391",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T10:11:44.588Z"
+    },
+    {
+      "id": "7ebb9201-11f6-4930-a851-53bd23673234",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T10:17:29.425Z"
+    },
+    {
+      "id": "e6e102c1-2b9d-4488-9ced-2834e2a202f3",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T10:18:09.732Z"
+    },
+    {
+      "id": "becafe7e-8830-4b78-8ea5-09e7aad844e0",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T10:29:05.731Z"
     }
   ],
   "parkingSessions": [

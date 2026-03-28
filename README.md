@@ -121,54 +121,6 @@ REACT_APP_GOOGLE_MAPS_KEY=AIza...      # needed for Google Maps migration (see b
 
 ---
 
-## 1. Auth — Login & Registration
-
-### Bugs / Gaps to fix
-
-- **Form validation is missing on the frontend.** There is no check that the email looks like a valid address, that the password meets a minimum length, or that all required fields are filled before the form submits. Currently the backend returns a generic 400 which shows up as a raw error string.
-- **No "confirm password" field** on the register form. A user can type a mistyped password and never know.
-- **Error messages are not user-friendly.** Backend errors like "Email and password required" or "Invalid credentials" are shown verbatim. They should be mapped to friendly copy (e.g. "Wrong email or password. Try again.").
-- **No loading / disabled state on submit.** Double-clicking the Register button fires two API calls.
-- **JWT is stored in `localStorage`.** This is acceptable for a portfolio project but is a known XSS risk. For production, move to `HttpOnly` cookies.
-- **No "Forgot password" flow.** There is no reset link or email-based recovery.
-- **No email verification.** Any email string is accepted on registration.
-- **Token expiry is not handled gracefully.** A 30-day-old token returns 401 and the user is silently redirected to login with no message.
-
-### Planned improvements
-
-- Add `zod` or `yup` schema validation on both frontend forms and backend handlers.
-- Add password strength indicator on register.
-- Add a toast/snackbar notification system instead of raw inline error strings.
-- Implement email-based password reset via nodemailer (or a service like Resend).
-- Switch to `HttpOnly` cookie auth when moving away from CRA.
-
----
-
-## 2. Wallet — Payment Methods & UI
-
-### Bugs / Gaps to fix
-
-- **The wallet top-up UI is a plain number input and a button.** It does not look or behave like a real payment screen.
-- **In dev mode (no Stripe key), any amount is credited instantly.** There is no visual indication that this is a demo, other than a small hint text below the button.
-- **No minimum top-up guard on the frontend.** The backend rejects amounts ≤ 0 and > 500, but the form does not inform the user before submitting.
-- **Stripe integration is backend-only.** There is no Stripe Elements / Payment Element on the frontend. The `paymentMethodId` field in the API exists but there is no UI to collect it.
-
-### Planned improvements
-
-- **Replace the input+button with a proper payment sheet modal:**
-  - Quick-select amount chips (e.g. €10, €20, €50, €100).
-  - Expandable "custom amount" field.
-  - Payment method tabs at the top: **Card**, **Apple Pay**, **Google Pay**, **Aircash**, **PayPal**.
-  - Card tab: embed Stripe Payment Element (handles card, Apple Pay, Google Pay natively in one component).
-  - Aircash tab: redirect flow using Aircash checkout URL (Aircash is popular in Croatia/region). Requires Aircash merchant account.
-  - PayPal tab: PayPal JS SDK button.
-- Show wallet balance in a styled "card" UI (like a bank card tile) with last four digits masked.
-- Add spend analytics: a small bar chart of spending per day / week using Chart.js or Recharts.
-- Add low-balance warning when balance drops below €2.
-- Transaction list should be paginated or load-more rather than truncated at 8 items.
-
----
-
 ## 3. Rewards System
 
 ### Bugs / Gaps to fix
@@ -186,11 +138,6 @@ REACT_APP_GOOGLE_MAPS_KEY=AIza...      # needed for Google Maps migration (see b
   - Silver — +5% bonus points on every parking session, exclusive reward "30 min free".
   - Gold — +10% bonus points, "3-day free pass" reward, priority map pin colour.
 - **Streak bonuses**: park 5 days in a row → earn double points for a day.
-- **Referral reward**: share a referral code; both users earn 150 points on the referee's first session.
-- **Reward expiry**: "free session" and "% off" rewards expire after 30 days if unused.
-- **Admin panel** (or at least a seeded config file) to manage the catalog without a code deploy.
-- **Visual progress bar** on the dashboard showing points to next tier.
-- Move rewards catalog to `server/data/store.json` under a `rewardCatalog` key and expose `GET /api/rewards/catalog` + `PUT /api/rewards/catalog` for admin editing.
 
 ---
 
