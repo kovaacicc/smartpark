@@ -1,0 +1,58 @@
+{
+  "users": [
+    {
+      "id": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "email": "borna.orsulic2@gmail.com",
+      "passwordHash": "$2a$10$OqWPAiyXh16s1KsAWZTWSu4mlEQh92izsmyHlRg5R5FtJ2ECb8WTq",
+      "name": "borna",
+      "walletBalance": 19.3,
+      "rewardPoints": 71,
+      "pendingParkingDiscountPercent": 0,
+      "freeNextParking": false
+    }
+  ],
+  "cars": [
+    {
+      "id": "b75ea3c8-f474-49e1-83eb-3f72674705d0",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "plate": "ZG5563ES",
+      "label": ""
+    }
+  ],
+  "subscriptions": [],
+  "transactions": [
+    {
+      "id": "2079e517-f626-44a8-8760-ced924a8e2dc",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T09:40:48.408Z"
+    },
+    {
+      "id": "b0ce29a2-21a5-44d0-8faa-7c9ccad45c6a",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "debit",
+      "amount": -0.7,
+      "description": "Parking zone 2",
+      "createdAt": "2026-03-28T09:41:55.803Z"
+    }
+  ],
+  "parkingSessions": [
+    {
+      "id": "d16d2b97-8efb-4ab6-b9e0-cff353a11c54",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "carId": "b75ea3c8-f474-49e1-83eb-3f72674705d0",
+      "zone": 2,
+      "lat": 45.81284264849402,
+      "lon": 15.985254710725151,
+      "streetName": "",
+      "startTime": "2026-03-28T09:41:34.426Z",
+      "endTime": "2026-03-28T09:41:55.803Z",
+      "status": "completed",
+      "chargeAmount": 0.7,
+      "durationMs": 21377
+    }
+  ],
+  "rewardRedemptions": []
+}
