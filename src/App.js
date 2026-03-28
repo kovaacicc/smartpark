@@ -17,10 +17,86 @@ import {
   useRef,
   useState,
 } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import "leaflet.heat";
+import {
+  GoogleMap,
+  useJsApiLoader,
+  HeatmapLayer,
+  Polygon,
+  Marker,
+  Autocomplete,
+} from "@react-google-maps/api";
 import "./App.css";
+
+const GMAPS_KEY = "REDACTED";
+const GMAPS_LIBS = ["visualization", "places"];
+
+const ZONE_COLORS = { 1: "#ef4444", 2: "#eab308", 3: "#22c55e" };
+const ZONE_LABELS = {
+  1: "Zona I — centar (crvena)",
+  2: "Zona II — polucentar (žuta)",
+  3: "Zona III — vanjska (zelena)",
+};
+
+const SUB_PRICES = {
+  1: { monthly: 13.30, yearly: 159.60 },
+  2: { monthly: 5.30,  yearly: 63.60 },
+  3: { monthly: 3.30,  yearly: 39.60 },
+};
+
+const ZONE_HOURLY = {
+  1: { rate: 1.60, maxH: 2,   dayRate: 13.30, hours: "pon–pet 7–24h, sub 7–24h, ned 7–15h" },
+  2: { rate: 0.70, maxH: 3,   dayRate: 8.00,  hours: "pon–pet 7–20h, sub 7–15h, ned besplatno" },
+  3: { rate: 0.30, maxH: null, dayRate: null,  hours: "pon–pet 7–20h, sub 7–15h, ned besplatno" },
+};
+
+const ZAGREB_CENTER = { lat: 45.815, lng: 15.9819 };
+const ZAGREB_BOUNDS = { north: 45.88, south: 45.75, east: 16.10, west: 15.85 };
+
+function assignZones(features) {
+  return features.map((f) => ({
+    ...f,
+    zone: Number(f.properties?.zone) || 2,
+    block: Number(f.properties?.block) || 0,
+  }));
+}
+
+function geoJsonToLatLng(coords) {
+  return coords.map(([lng, lat]) => ({ lat, lng }));
+}
+
+function pointInPolygon(lat, lng, coords) {
+  let inside = false;
+  for (let i = 0, j = coords.length - 1; i < coords.length; j = i++) {
+    const [xi, yi] = coords[i];
+    const [xj, yj] = coords[j];
+    if ((yi > lng) !== (yj > lng) && lat < ((xj - xi) * (lng - yi)) / (yj - yi) + xi)
+      inside = !inside;
+  }
+  return inside;
+}
+
+function detectZone(lat, lng, features) {
+  for (const f of features) {
+    if (pointInPolygon(lat, lng, f.geometry.coordinates[0])) return f.zone;
+  }
+  return null;
+}
+
+function findNearestStreet(streets, lat, lng) {
+  if (!streets.length) return {};
+  let nearest = null, minDist = Infinity;
+  for (const s of streets) {
+    const d = haversineKm({ lat, lon: lng }, { lat: s.lat, lon: s.lon });
+    if (d < minDist) { minDist = d; nearest = s; }
+  }
+  if (!nearest || minDist > 0.35) return {};
+  return {
+    occupancy: nearest.occupancy,
+    capacity: nearest.capacity,
+    current_cars: nearest.current_cars,
+    free: Math.max(0, (nearest.capacity || 0) - (nearest.current_cars || 0)),
+  };
+}
 
 const TOKEN_KEY = "parking_token";
 
@@ -125,7 +201,7 @@ function AuthProvider({ children }) {
       refreshUser,
       setUser,
     }),
-    [user, token, booting, loginWith, logout, refreshUser]
+    [user, token, booting, loginWith, logout, refreshUser, setUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -621,6 +697,39 @@ function DashboardPage() {
   const [showTopUp, setShowTopUp] = useState(false);
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
+  const [subZone, setSubZone] = useState(null);
+  const [subBlock, setSubBlock] = useState(null);
+  const [subZoneFeatures, setSubZoneFeatures] = useState([]);
+  const [showZoneMap, setShowZoneMap] = useState(false);
+  const [ppkStep, setPpkStep] = useState("idle"); // idle | wizard | done
+  const [ppkType, setPpkType] = useState("");
+  const [ppkConfirmed, setPpkConfirmed] = useState(false);
+
+  useEffect(() => {
+    if (!showZoneMap || subZoneFeatures.length) return;
+    fetch(`${process.env.PUBLIC_URL || ""}/zones2.geojson`)
+      .then((r) => r.json())
+      .then((data) => setSubZoneFeatures(assignZones(data.features)))
+      .catch(() => {});
+  }, [showZoneMap, subZoneFeatures.length]);
+
+  async function submitPpkVerify() {
+    if (!ppkType || !ppkConfirmed) return;
+    setBusy("ppk");
+    try {
+      const u = await api("/api/user/ppk-verify", {
+        method: "POST",
+        body: JSON.stringify({ ppkType }),
+      });
+      setUser(u);
+      setPpkStep("done");
+      setMsg("Verifikacija uspješna! Možeš kupiti PPK pretplatu.");
+    } catch (err) {
+      setMsg(err.message);
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function reload() {
     const [c, w, s, r, ps] = await Promise.all([
@@ -697,14 +806,16 @@ function DashboardPage() {
   }
 
   async function buySub(plan) {
+    if (!subZone || !subBlock) { setMsg("Odaberi blok na karti prije kupnje."); return; }
     setBusy("sub");
     setMsg("");
     try {
       await api("/api/subscription", {
         method: "POST",
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, zone: subZone, block: subBlock }),
       });
-      setMsg(`Subscription (${plan}) activated.`);
+      setMsg(`Pretplata (${plan}, Zona ${subZone}, Blok ${subBlock}) aktivirana.`);
+      setShowZoneMap(false);
       await reload();
     } catch (err) {
       setMsg(err.message);
@@ -871,24 +982,200 @@ function DashboardPage() {
         </div>
 
         <div className="card">
-          <h2>Subscription</h2>
+          <h2>PPK Pretplata</h2>
+          <p className="hint" style={{ marginTop: 0 }}>Povlaštena Parkirna Karta — neograničeno parkiranje u odabranoj zoni.</p>
+
           {sub.active ? (
-            <p>
-              Active <span className="badge">{sub.subscription.plan}</span> until{" "}
-              {new Date(sub.subscription.endDate).toLocaleDateString()}
-            </p>
+            <div style={{ marginTop: "0.5rem" }}>
+              <p style={{ margin: 0 }}>
+                <span className="badge" style={{ background: "#22c55e", color: "#fff" }}>Aktivna</span>{" "}
+                <span className="badge">{sub.subscription.plan === "monthly" ? "Mjesečna" : "Godišnja"}</span>
+                {sub.subscription.zone && (
+                  <span className="badge" style={{ marginLeft: "0.4rem", background: ZONE_COLORS[sub.subscription.zone], color: "#fff" }}>
+                    {ZONE_LABELS[sub.subscription.zone]}
+                    {sub.subscription.block ? ` · Blok ${sub.subscription.block}` : ""}
+                  </span>
+                )}
+              </p>
+              <p className="muted" style={{ marginTop: "0.4rem", fontSize: "0.85rem" }}>
+                Vrijedi do {new Date(sub.subscription.endDate).toLocaleDateString("hr-HR")} · Parkiranje besplatno u odabranoj zoni.
+              </p>
+            </div>
           ) : (
-            <p className="muted">No active pass. Parking is billed per session.</p>
+            <>
+              {/* Korak 1: verifikacija prava na PPK */}
+              {!user?.ppkVerified && ppkStep !== "wizard" && (
+                <div style={{ marginTop: "0.75rem" }}>
+                  <p className="muted" style={{ fontSize: "0.88rem" }}>
+                    PPK mogu kupiti samo stanari ili tvrtke sa sjedištem u parking zoni.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ marginTop: "0.5rem" }}
+                    onClick={() => setPpkStep("wizard")}
+                  >
+                    Provjeri pravo na PPK →
+                  </button>
+                </div>
+              )}
+
+              {/* Wizard verifikacije */}
+              {!user?.ppkVerified && ppkStep === "wizard" && (
+                <div style={{ marginTop: "0.75rem", padding: "1rem", background: "rgba(148,163,184,0.07)", borderRadius: 10, border: "1px solid rgba(148,163,184,0.15)" }}>
+                  <h3 style={{ margin: "0 0 0.75rem", fontSize: "0.95rem" }}>Verifikacija prava na PPK</h3>
+
+                  <p className="hint" style={{ margin: "0 0 0.5rem" }}>Tip korisnika:</p>
+                  <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                    {[
+                      { val: "resident", label: "Stanar", desc: "Prijavljeno prebivalište/boravište u zoni" },
+                      { val: "business", label: "Tvrtka / Obrt", desc: "Sjedište ili poslovni prostor u zoni" },
+                    ].map(({ val, label, desc }) => (
+                      <button
+                        key={val}
+                        type="button"
+                        className={ppkType === val ? "btn btn-primary" : "btn btn-ghost"}
+                        style={{ flex: 1, textAlign: "left", padding: "0.5rem 0.75rem" }}
+                        onClick={() => setPpkType(val)}
+                      >
+                        <strong style={{ display: "block" }}>{label}</strong>
+                        <span style={{ fontSize: "0.75rem", opacity: 0.75 }}>{desc}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {ppkType && (
+                    <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", cursor: "pointer", fontSize: "0.87rem", marginBottom: "0.75rem" }}>
+                      <input
+                        type="checkbox"
+                        checked={ppkConfirmed}
+                        onChange={(e) => setPpkConfirmed(e.target.checked)}
+                        style={{ marginTop: 3, flexShrink: 0 }}
+                      />
+                      {ppkType === "resident"
+                        ? "Potvrđujem da imam prijavljeno prebivalište ili boravište unutar parking zone za koju kupujem PPK, što mogu dokazati osobnom iskaznicom ili uvjerenjem MUP-a."
+                        : "Potvrđujem da tvrtka/obrt ima registrirano sjedište ili koristi poslovni prostor unutar parking zone za koju kupujem PPK, što mogu dokazati ugovorom o zakupu ili izvatkom iz zemljišnih knjiga."}
+                    </label>
+                  )}
+
+                  <div className="row">
+                    <button type="button" className="btn btn-ghost" onClick={() => { setPpkStep("idle"); setPpkType(""); setPpkConfirmed(false); }}>
+                      Odustani
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={!ppkType || !ppkConfirmed || !!busy}
+                      onClick={submitPpkVerify}
+                    >
+                      Potvrdi verifikaciju
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Kupnja pretplate — vidljivo samo verificiranim korisnicima */}
+              {(user?.ppkVerified || ppkStep === "done") && (
+                <>
+                  {user?.ppkVerified && (
+                    <p style={{ fontSize: "0.83rem", color: "#22c55e", margin: "0.5rem 0 0.75rem" }}>
+                      ✓ Verificiran kao {user.ppkType === "resident" ? "stanar" : "tvrtka/obrt"}
+                    </p>
+                  )}
+
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ marginTop: "0.25rem" }}
+                    onClick={() => setShowZoneMap((v) => !v)}
+                  >
+                    {showZoneMap ? "▲ Sakrij kartu" : "▼ Odaberi blok na karti"}
+                  </button>
+
+                  {showZoneMap && (
+                    <div style={{ marginTop: "0.75rem" }}>
+                      {/* Zone price legend */}
+                      <div style={{ display: "flex", gap: "0.4rem", marginBottom: "0.6rem", flexWrap: "wrap" }}>
+                        {[1, 2, 3].map((z) => (
+                          <div key={z} style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.78rem", color: "#94a3b8" }}>
+                            <span style={{ width: 10, height: 10, borderRadius: 2, background: ZONE_COLORS[z], display: "inline-block", flexShrink: 0 }} />
+                            {ZONE_LABELS[z]} — €{SUB_PRICES[z].monthly.toFixed(2).replace(".", ",")}/mj
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{ height: 300, borderRadius: 12, overflow: "hidden", border: "1px solid rgba(148,163,184,0.2)" }}>
+                        <GoogleMap
+                          mapContainerStyle={{ width: "100%", height: "100%" }}
+                          center={ZAGREB_CENTER}
+                          zoom={13}
+                          options={{ disableDefaultUI: true, zoomControl: true, mapTypeId: "roadmap" }}
+                        >
+                          {subZoneFeatures.map((f, i) => {
+                            const isSelected = subZone === f.zone && subBlock === f.block;
+                            return (
+                              <Polygon
+                                key={i}
+                                paths={geoJsonToLatLng(f.geometry.coordinates[0])}
+                                options={{
+                                  fillColor: ZONE_COLORS[f.zone],
+                                  fillOpacity: isSelected ? 0.55 : 0.13,
+                                  strokeColor: ZONE_COLORS[f.zone],
+                                  strokeOpacity: isSelected ? 1 : 0.7,
+                                  strokeWeight: isSelected ? 3.5 : 1.2,
+                                  cursor: "pointer",
+                                }}
+                                onClick={() => { setSubZone(f.zone); setSubBlock(f.block); }}
+                              />
+                            );
+                          })}
+                        </GoogleMap>
+                      </div>
+
+                      {subZone && subBlock ? (
+                        <div style={{ marginTop: "0.5rem", padding: "0.5rem 0.75rem", borderRadius: 8, background: `${ZONE_COLORS[subZone]}18`, border: `1px solid ${ZONE_COLORS[subZone]}44` }}>
+                          <p style={{ margin: 0, fontWeight: 700, color: ZONE_COLORS[subZone], fontSize: "0.9rem" }}>
+                            Blok {subBlock} — {ZONE_LABELS[subZone]}
+                          </p>
+                          <p style={{ margin: "0.15rem 0 0", fontSize: "0.78rem", color: "#94a3b8" }}>
+                            Pretplata vrijedi samo za ovaj blok.
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="hint" style={{ marginTop: "0.5rem", textAlign: "center" }}>
+                          ↑ Klikni na blok na karti
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="row" style={{ marginTop: "0.75rem" }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={!!busy || !subZone || !subBlock}
+                      onClick={() => buySub("monthly")}
+                      style={subZone ? { borderLeft: `3px solid ${ZONE_COLORS[subZone]}` } : {}}
+                      title={!subBlock ? "Odaberi blok na karti" : ""}
+                    >
+                      Mjesečna · {subZone ? `€${SUB_PRICES[subZone].monthly.toFixed(2).replace(".", ",")}` : "—"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={!!busy || !subZone || !subBlock}
+                      onClick={() => buySub("yearly")}
+                      style={subZone ? { borderLeft: `3px solid ${ZONE_COLORS[subZone]}` } : {}}
+                      title={!subBlock ? "Odaberi blok na karti" : ""}
+                    >
+                      Godišnja · {subZone ? `€${SUB_PRICES[subZone].yearly.toFixed(2).replace(".", ",")}` : "—"}
+                    </button>
+                  </div>
+                  <p className="hint">Plaća se s novčanika. PPK vrijedi samo za odabrani blok.</p>
+                </>
+              )}
+            </>
           )}
-          <div className="row" style={{ marginTop: "0.75rem" }}>
-            <button type="button" className="btn btn-ghost" disabled={!!busy} onClick={() => buySub("monthly")}>
-              Monthly · €29
-            </button>
-            <button type="button" className="btn btn-ghost" disabled={!!busy} onClick={() => buySub("yearly")}>
-              Yearly · €299
-            </button>
-          </div>
-          <p className="hint">Paid from wallet balance.</p>
         </div>
 
         <div className="card">
@@ -998,24 +1285,23 @@ function DashboardPage() {
 function ParkingMapPage() {
   const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
-  const mapEl = useRef(null);
+
   const mapRef = useRef(null);
-  const heatRef = useRef(null);
-  const pinRef = useRef(null);
-  const streetsData = useRef([]);
+  const autocompleteRef = useRef(null);
+  const streetsRef = useRef([]);
 
   const [cars, setCars] = useState([]);
   const [session, setSession] = useState(null);
   const [zone, setZone] = useState(1);
   const [selectedCar, setSelectedCar] = useState("");
-  const [searchQ, setSearchQ] = useState("");
-  const [suggestions, setSuggestions] = useState([]);
   const [selectedStreet, setSelectedStreet] = useState(null);
   const [refLocation, setRefLocation] = useState(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
-
-  const token = localStorage.getItem(TOKEN_KEY);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [heatmapData, setHeatmapData] = useState([]);
+  const [zoneFeatures, setZoneFeatures] = useState([]);
+  const [googleDistance, setGoogleDistance] = useState(null);
 
   const loadContext = useCallback(async () => {
     const [c, ps] = await Promise.all([api("/api/cars"), api("/api/parking/session")]);
@@ -1024,139 +1310,75 @@ function ParkingMapPage() {
     if (c.length && !selectedCar) setSelectedCar(c[0].id);
   }, [selectedCar]);
 
-  useEffect(() => {
-    loadContext().catch(() => {});
-  }, [loadContext]);
+  useEffect(() => { loadContext().catch(() => {}); }, [loadContext]);
 
+  // Load streets + zones data once
   useEffect(() => {
-    if (!mapEl.current || mapRef.current) return;
-    const map = L.map(mapEl.current, { zoomControl: true }).setView([45.815, 15.9819], 13);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CARTO',
-      subdomains: "abcd",
-      maxZoom: 20,
-    }).addTo(map);
-    mapRef.current = map;
-
-    const url = `${process.env.PUBLIC_URL || ""}/streets_with_parking.json`;
-    fetch(url)
+    fetch(`${process.env.PUBLIC_URL || ""}/streets_with_parking.json`)
       .then((r) => r.json())
       .then((rows) => {
-        streetsData.current = rows;
-        if (heatRef.current) map.removeLayer(heatRef.current);
-        const pts = rows.map((s) => [s.lat, s.lon, Math.min(1, s.occupancy || 0.3)]);
-        heatRef.current = L.heatLayer(pts, {
-          radius: 26,
-          blur: 18,
-          max: 1,
-          minOpacity: 0.35,
-        }).addTo(map);
+        streetsRef.current = rows;
+        setHeatmapData(rows.map((s) => ({
+          location: new window.google.maps.LatLng(s.lat, s.lon),
+          weight: Math.min(1, s.occupancy || 0.3) * 100,
+        })));
       })
       .catch(() => {});
-
-    return () => {
-      if (heatRef.current && mapRef.current) {
-        try {
-          mapRef.current.removeLayer(heatRef.current);
-        } catch {
-          /* noop */
-        }
-      }
-      heatRef.current = null;
-      if (pinRef.current) {
-        try {
-          mapRef.current.removeLayer(pinRef.current);
-        } catch {
-          /* noop */
-        }
-        pinRef.current = null;
-      }
-      map.remove();
-      mapRef.current = null;
-    };
+    fetch(`${process.env.PUBLIC_URL || ""}/zones2.geojson`)
+      .then((r) => r.json())
+      .then((data) => setZoneFeatures(assignZones(data.features)))
+      .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !selectedStreet) return;
-    const icon = L.divIcon({
-      className: "",
-      html: '<div class="pin-marker"></div>',
-      iconSize: [26, 26],
-      iconAnchor: [13, 24],
+  function computeGoogleDistance(from, to) {
+    const svc = new window.google.maps.DistanceMatrixService();
+    svc.getDistanceMatrix({
+      origins: [new window.google.maps.LatLng(from.lat, from.lon ?? from.lng)],
+      destinations: [new window.google.maps.LatLng(to.lat, to.lon ?? to.lng)],
+      travelMode: window.google.maps.TravelMode.DRIVING,
+    }, (result, st) => {
+      if (st === "OK") {
+        const elem = result.rows[0].elements[0];
+        if (elem.status === "OK")
+          setGoogleDistance({ distance: elem.distance.text, duration: elem.duration.text });
+      }
     });
-    if (pinRef.current) map.removeLayer(pinRef.current);
-    pinRef.current = L.marker([selectedStreet.lat, selectedStreet.lon], { icon }).addTo(map);
-    map.panInside([selectedStreet.lat, selectedStreet.lon], { padding: [80, 80] });
-  }, [selectedStreet]);
+  }
 
-  function useGps() {
-    if (!navigator.geolocation) {
-      setStatus("Geolocation not available.");
-      return;
-    }
+  function onPlaceChanged() {
+    const place = autocompleteRef.current?.getPlace();
+    if (!place?.geometry) return;
+    const lat = place.geometry.location.lat();
+    const lng = place.geometry.location.lng();
+    const street = place.formatted_address || place.name || "";
+    const nearby = findNearestStreet(streetsRef.current, lat, lng);
+    const picked = { lat, lon: lng, street, ...nearby };
+    setSelectedStreet(picked);
+    setGoogleDistance(null);
+    mapRef.current?.panTo({ lat, lng });
+    mapRef.current?.setZoom(16);
+    if (refLocation) computeGoogleDistance(refLocation, picked);
+  }
+
+  function handleGps() {
+    if (!navigator.geolocation) { setStatus("Geolocation not available."); return; }
     setStatus("Locating…");
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
         setRefLocation(loc);
-        mapRef.current?.setView([loc.lat, loc.lon], 15);
-        setStatus("Using GPS as reference.");
+        mapRef.current?.panTo({ lat: loc.lat, lng: loc.lon });
+        mapRef.current?.setZoom(15);
+        setStatus("GPS locked.");
+        if (selectedStreet) computeGoogleDistance(loc, selectedStreet);
+        try {
+          const res = await api(`/api/places/reverse?lat=${loc.lat}&lon=${loc.lon}`);
+          if (res.streetName) setStatus(`Near: ${res.streetName}`);
+        } catch { /* ignore */ }
       },
       () => setStatus("Could not read GPS."),
       { enableHighAccuracy: true, timeout: 12000 }
     );
-  }
-
-  useEffect(() => {
-    if (!searchQ || searchQ.length < 2) {
-      setSuggestions([]);
-      return;
-    }
-    const local = streetsData.current
-      .map((s) => ({
-        ...s,
-        distanceKm: refLocation ? haversineKm(refLocation, s) : 0,
-        free: Math.max(0, (s.capacity || 0) - (s.current_cars || 0)),
-      }))
-      .filter((s) => s.street.toLowerCase().includes(searchQ.toLowerCase()))
-      .sort(
-        (a, b) => (refLocation ? a.distanceKm - b.distanceKm : b.free - a.free)
-      )
-      .slice(0, 12);
-
-    const h = setTimeout(async () => {
-      let remote = [];
-      if (token && searchQ.length >= 3) {
-        try {
-          const res = await api(`/api/places/search?q=${encodeURIComponent(searchQ)}`);
-          remote = (res.places || []).map((p) => ({
-            street: p.label,
-            lat: p.lat,
-            lon: p.lon,
-            remote: true,
-            distanceKm: refLocation ? haversineKm(refLocation, p) : null,
-            capacity: null,
-            current_cars: null,
-            occupancy: null,
-            free: null,
-          }));
-        } catch {
-          /* ignore */
-        }
-      }
-      const merged = [...local, ...remote].slice(0, 14);
-      setSuggestions(merged);
-    }, 280);
-
-    return () => clearTimeout(h);
-  }, [searchQ, refLocation, token]);
-
-  function pickSuggestion(s) {
-    setSelectedStreet(s);
-    setSearchQ(s.street);
-    setSuggestions([]);
-    if (!refLocation) setRefLocation({ lat: s.lat, lon: s.lon });
   }
 
   async function startParking() {
@@ -1164,154 +1386,250 @@ function ParkingMapPage() {
       setStatus("Select a vehicle on the dashboard or add one.");
       return;
     }
-    const loc = selectedStreet
-      ? { lat: selectedStreet.lat, lon: selectedStreet.lon, street: selectedStreet.street }
-      : refLocation;
-    if (!loc) {
-      setStatus("Pick a street or set GPS / search.");
+    if (!selectedStreet && !refLocation) {
+      setStatus("Search for a location or use GPS first.");
       return;
     }
-    setBusy(true);
-    setStatus("");
+    const loc = selectedStreet ?? { lat: refLocation.lat, lon: refLocation.lon, street: "" };
+    const detectedZone = detectZone(loc.lat, loc.lon ?? loc.lng, zoneFeatures) ?? 1;
+    setBusy(true); setStatus("");
     try {
       await api("/api/parking/start", {
         method: "POST",
-        body: JSON.stringify({
-          carId: selectedCar,
-          zone,
-          lat: loc.lat,
-          lon: loc.lon,
-          streetName: loc.street || "",
-        }),
+        body: JSON.stringify({ carId: selectedCar, zone: detectedZone, lat: loc.lat, lon: loc.lon, streetName: loc.street || "" }),
       });
-      setStatus("Parking started.");
-      await loadContext();
-      await refreshUser();
-    } catch (e) {
-      setStatus(e.message);
-    } finally {
-      setBusy(false);
-    }
+      setStatus(`Parking started — Zona ${detectedZone} (auto-detected).`);
+      await loadContext(); await refreshUser();
+    } catch (e) { setStatus(e.message); }
+    finally { setBusy(false); }
   }
 
   async function stopParking() {
-    setBusy(true);
-    setStatus("");
+    setBusy(true); setStatus("");
     try {
       const rec = await api("/api/parking/stop", { method: "POST", body: JSON.stringify({}) });
-      setStatus(`Stopped. Charged ${formatEuro(rec.charge)}.`);
-      await loadContext();
-      await refreshUser();
-    } catch (e) {
-      setStatus(e.message);
-    } finally {
-      setBusy(false);
-    }
+      let note = `Stopped. Charged ${formatEuro(rec.charge)}.`;
+      if (rec.breakdown?.subscriptionWaived) note = "Stopped. Free with subscription.";
+      else if (rec.breakdown?.freeFirstHourApplied) note = `Stopped. Saved ${formatEuro(rec.breakdown.freeFirstHourSaving)} (1h free). Charged ${formatEuro(rec.charge)}.`;
+      else if (rec.breakdown?.zone2ExtApplied) note = `Stopped. Saved ${formatEuro(rec.breakdown.zone2ExtSaving)} (4th hour 50% off). Charged ${formatEuro(rec.charge)}.`;
+      setStatus(note);
+      await loadContext(); await refreshUser();
+    } catch (e) { setStatus(e.message); }
+    finally { setBusy(false); }
   }
+
+  const zh = ZONE_HOURLY[zone];
 
   return (
     <div className="map-shell">
       <div className="map-top">
         <div className="row">
-          <Link to="/dashboard" className="btn btn-ghost">
-            ← Dashboard
-          </Link>
+          <Link to="/dashboard" className="btn btn-ghost">← Dashboard</Link>
           <span className="muted">Wallet {formatEuro(user?.walletBalance)}</span>
         </div>
         <div className="row">
-          <button type="button" className="btn btn-ghost" onClick={useGps}>
-            Use GPS
+          <button type="button" className="btn btn-ghost" onClick={handleGps}>Use GPS</button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => setShowHeatmap((v) => !v)}
+            style={showHeatmap ? { borderColor: "#f97316", color: "#f97316" } : {}}
+          >
+            {showHeatmap ? "Sakrij heatmap" : "Prikaži heatmap"}
           </button>
           {session ? (
-            <button type="button" className="btn btn-danger" disabled={busy} onClick={stopParking}>
-              Stop parking
-            </button>
+            <button type="button" className="btn btn-danger" disabled={busy} onClick={stopParking}>Stop parking</button>
           ) : (
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={startParking}>
-              Start parking
-            </button>
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={startParking}>Start parking</button>
           )}
         </div>
       </div>
+
       <div className="map-body">
         <aside className="map-panel">
-          <h2 style={{ margin: "0 0 0.5rem", fontSize: "1.05rem" }}>Location</h2>
-          <input
-            placeholder="Search street or address…"
-            value={searchQ}
-            onChange={(e) => setSearchQ(e.target.value)}
-            style={{ width: "100%" }}
-          />
-          {suggestions.length ? (
-            <ul className="suggest-list">
-              {suggestions.map((s, i) => (
-                <li key={`${s.street}-${i}`}>
-                  <button type="button" onClick={() => pickSuggestion(s)}>
-                    <strong>{s.street}</strong>
-                    <div className="muted">
-                      {s.remote
-                        ? "Nominatim"
-                        : `${(s.distanceKm != null ? s.distanceKm.toFixed(2) : "—")} km · ~${Math.round(
-                            (s.occupancy || 0) * 100
-                          )}% busy · ${s.free}/${s.capacity} free`}
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          <h2 style={{ margin: "0 0 0.5rem", fontSize: "1.05rem" }}>Find parking</h2>
 
-          <h3 className="hint" style={{ marginTop: "1rem" }}>
-            Zone (Zagreb pricing)
-          </h3>
+          <Autocomplete
+            onLoad={(ac) => { autocompleteRef.current = ac; }}
+            onPlaceChanged={onPlaceChanged}
+            options={{
+              bounds: new window.google.maps.LatLngBounds(
+                { lat: 45.75, lng: 15.85 },
+                { lat: 45.88, lng: 16.10 }
+              ),
+              strictBounds: false,
+              componentRestrictions: { country: "hr" },
+              fields: ["geometry", "formatted_address", "name", "address_components"],
+            }}
+          >
+            <input
+              className="local-search-input"
+              placeholder="Pretraži ulicu, adresu, kućni broj…"
+              style={{ width: "100%", boxSizing: "border-box", marginTop: "0.35rem" }}
+            />
+          </Autocomplete>
+
+          {/* Selected street info card */}
+          {selectedStreet && (
+            <div className="nearby-parking-card" style={{ marginTop: "0.75rem" }}>
+              <div className="nearby-parking-header">
+                <span className="nearby-parking-title">Odabrana lokacija</span>
+                {googleDistance && (
+                  <span className="nearby-parking-dist">🚗 {googleDistance.distance} · ⏱ {googleDistance.duration}</span>
+                )}
+              </div>
+              <div className="nearby-parking-street">{selectedStreet.street}</div>
+              {selectedStreet.capacity != null && (
+                <div className="nearby-parking-stats">
+                  <span className={`nearby-parking-stat ${selectedStreet.free === 0 ? "stat-full" : selectedStreet.free < 5 ? "stat-busy" : "stat-free"}`}>
+                    {selectedStreet.free} / {selectedStreet.capacity} slobodno
+                  </span>
+                  <span className="nearby-parking-stat">~{Math.round((selectedStreet.occupancy || 0) * 100)}% zauzeto</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Street View */}
+          {selectedStreet && (
+            <div className="streetview-wrap">
+              <p className="streetview-label">Street View — povuci za okret</p>
+              <iframe
+                className="streetview-embed"
+                title="Street View"
+                loading="lazy"
+                allowFullScreen
+                referrerPolicy="no-referrer-when-downgrade"
+                src={`https://www.google.com/maps/embed/v1/streetview?key=${GMAPS_KEY}&location=${selectedStreet.lat},${selectedStreet.lon}&fov=90&pitch=0`}
+              />
+              <a
+                className="directions-btn"
+                href={`https://www.google.com/maps/dir/?api=1&destination=${selectedStreet.lat},${selectedStreet.lon}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Upute u Google Maps ↗
+              </a>
+            </div>
+          )}
+
+          <h3 className="hint" style={{ marginTop: "1rem" }}>Zona (ZagrebParking — info)</h3>
+          <p className="hint" style={{ marginBottom: "0.4rem" }}>Zona se automatski određuje prema lokaciji.</p>
           <div className="zone-pills">
             {[1, 2, 3].map((z) => (
               <button
                 key={z}
                 type="button"
                 className={zone === z ? "active" : ""}
+                style={zone === z ? { borderColor: ZONE_COLORS[z], background: `${ZONE_COLORS[z]}22` } : {}}
                 onClick={() => setZone(z)}
               >
-                Zone {z}
+                {z === 1 ? "Zona I" : z === 2 ? "Zona II" : "Zona III"}
               </button>
             ))}
           </div>
-          <p className="hint">
-            Z1 €1.60/h (≤2h) else €16 · Z2 €0.70/h (≤3h) else €8 · Z3 €0.12/h all day.
+          <p className="hint" style={{ marginTop: "0.35rem" }}>
+            €{zh.rate.toFixed(2)}/h · maks. {zh.maxH ? `${zh.maxH}h` : "cijeli dan"}
+            {zh.dayRate ? `, zatim dnevna €${zh.dayRate.toFixed(2)}` : ""}
           </p>
+          <p className="hint">{zh.hours}</p>
 
-          <h3 className="hint" style={{ marginTop: "1rem" }}>
-            Vehicle
-          </h3>
-          <select value={selectedCar} onChange={(e) => setSelectedCar(e.target.value)} style={{ width: "100%" }}>
-            {cars.length === 0 ? (
-              <option value="">Add a vehicle first</option>
-            ) : null}
-            {cars.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.plate}
-              </option>
-            ))}
+          <h3 className="hint" style={{ marginTop: "1rem" }}>Vozilo</h3>
+          <select value={selectedCar} onChange={(e) => setSelectedCar(e.target.value)} className="dark-select" style={{ width: "100%" }}>
+            {cars.length === 0 ? <option value="">Dodaj vozilo u dashboardu</option> : null}
+            {cars.map((c) => <option key={c.id} value={c.id}>{c.plate}</option>)}
           </select>
-          {cars.length === 0 ? (
+          {cars.length === 0 && (
             <button type="button" className="btn btn-ghost" style={{ marginTop: 8 }} onClick={() => navigate("/dashboard")}>
-              Add a car in dashboard
+              Dodaj vozilo →
             </button>
-          ) : null}
+          )}
 
-          {session ? (
+          {session && (
             <div className="card" style={{ marginTop: "1rem" }}>
-              <h2 style={{ fontSize: "0.95rem" }}>Active session</h2>
+              <h2 style={{ fontSize: "0.95rem" }}>Aktivna sesija</h2>
               <p className="muted" style={{ margin: "0.35rem 0" }}>
-                Zone {session.zone} · {new Date(session.startTime).toLocaleTimeString()}
+                Zona {session.zone} · {new Date(session.startTime).toLocaleTimeString()}
               </p>
             </div>
-          ) : null}
+          )}
 
-          {status ? <p className="muted" style={{ marginTop: "0.75rem" }}>{status}</p> : null}
+          {status && <p className="muted" style={{ marginTop: "0.75rem" }}>{status}</p>}
         </aside>
+
         <div className="map-canvas-wrap">
-          <div ref={mapEl} className="map-root" />
+          <GoogleMap
+            mapContainerStyle={{ width: "100%", height: "100%" }}
+            center={ZAGREB_CENTER}
+            zoom={13}
+            onLoad={(map) => { mapRef.current = map; }}
+            options={{
+              mapTypeId: "roadmap",
+              zoomControl: true,
+              streetViewControl: false,
+              mapTypeControl: false,
+              fullscreenControl: true,
+            }}
+          >
+            {showHeatmap && heatmapData.length > 0 && (
+              <HeatmapLayer
+                data={heatmapData}
+                options={{
+                  radius: 30,
+                  opacity: 0.7,
+                  gradient: ["rgba(0,0,0,0)", "rgba(34,197,94,0.8)", "rgba(245,158,11,0.9)", "rgba(239,68,68,1)"],
+                }}
+              />
+            )}
+            {zoneFeatures.map((f, i) => (
+              <Polygon
+                key={i}
+                paths={geoJsonToLatLng(f.geometry.coordinates[0])}
+                options={{
+                  fillColor: ZONE_COLORS[f.zone],
+                  fillOpacity: zone === f.zone ? 0.18 : 0.07,
+                  strokeColor: ZONE_COLORS[f.zone],
+                  strokeOpacity: 0.85,
+                  strokeWeight: zone === f.zone ? 2.5 : 1.2,
+                }}
+                onClick={() => setZone(f.zone)}
+              />
+            ))}
+            {selectedStreet && (
+              <Marker
+                position={{ lat: selectedStreet.lat, lng: selectedStreet.lon }}
+                title={selectedStreet.street}
+              />
+            )}
+            {refLocation && (
+              <Marker
+                position={{ lat: refLocation.lat, lng: refLocation.lon }}
+                title="Moja lokacija"
+                icon={{
+                  path: window.google.maps.SymbolPath.CIRCLE,
+                  scale: 8,
+                  fillColor: "#3b82f6",
+                  fillOpacity: 1,
+                  strokeColor: "#fff",
+                  strokeWeight: 2,
+                }}
+              />
+            )}
+            {session?.lat && session?.lon && (
+              <Marker
+                position={{ lat: session.lat, lng: session.lon }}
+                title="Aktivno parkiranje"
+                icon={{
+                  path: window.google.maps.SymbolPath.CIRCLE,
+                  scale: 8,
+                  fillColor: "#22c55e",
+                  fillOpacity: 1,
+                  strokeColor: "#fff",
+                  strokeWeight: 2,
+                }}
+              />
+            )}
+          </GoogleMap>
         </div>
       </div>
     </div>
@@ -1351,6 +1669,22 @@ function AppShell() {
 }
 
 export default function App() {
+  const { isLoaded, loadError } = useJsApiLoader({
+    googleMapsApiKey: GMAPS_KEY,
+    libraries: GMAPS_LIBS,
+  });
+
+  if (loadError) return (
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
+      <p>Error loading maps.</p>
+    </div>
+  );
+  if (!isLoaded) return (
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
+      <p>Loading…</p>
+    </div>
+  );
+
   return (
     <BrowserRouter>
       <AuthProvider>

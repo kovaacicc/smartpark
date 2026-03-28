@@ -5,10 +5,34 @@
       "email": "borna.orsulic2@gmail.com",
       "passwordHash": "$2a$10$OqWPAiyXh16s1KsAWZTWSu4mlEQh92izsmyHlRg5R5FtJ2ECb8WTq",
       "name": "borna",
-      "walletBalance": 279.3,
-      "rewardPoints": 331,
+      "walletBalance": 265.3,
+      "rewardPoints": 182,
+      "pendingParkingDiscountPercent": 0,
+      "freeNextParking": false,
+      "ppkVerified": true,
+      "ppkType": "resident"
+    },
+    {
+      "id": "7a185bd6-60a9-4420-bd33-b47a41eaf093",
+      "email": "b@gmail.com",
+      "passwordHash": "$2a$10$WUzwF9uXTmGilTS7Qsahtu9d6rh5T3pxGH.Johb/auN9tjgilSfhm",
+      "name": "b",
+      "walletBalance": 12.9,
+      "rewardPoints": 75,
       "pendingParkingDiscountPercent": 0,
       "freeNextParking": false
+    },
+    {
+      "id": "4b5d5926-4be5-48f7-941a-ac76b1dfc4b2",
+      "email": "b@gmail",
+      "passwordHash": "$2a$10$eYpmnUmbuqYjXIWEctEfdeFsb9X0CNggj5KLP5baUrknaDJe7AUd2",
+      "name": "b",
+      "walletBalance": 60.4,
+      "rewardPoints": 350,
+      "pendingParkingDiscountPercent": 0,
+      "freeNextParking": false,
+      "ppkVerified": true,
+      "ppkType": "business"
     }
   ],
   "cars": [
@@ -17,9 +41,34 @@
       "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
       "plate": "ZG5563ES",
       "label": ""
+    },
+    {
+      "id": "7c990eda-8b76-465b-b2ac-f4c61993dd2d",
+      "userId": "7a185bd6-60a9-4420-bd33-b47a41eaf093",
+      "plate": "ZG5563ES",
+      "label": ""
     }
   ],
-  "subscriptions": [],
+  "subscriptions": [
+    {
+      "id": "07bac2d3-9526-4b15-bd4a-9d1875ff6940",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "plan": "monthly",
+      "zone": 1,
+      "block": 2,
+      "startDate": "2026-03-28T14:24:13.909Z",
+      "endDate": "2026-04-28T13:24:13.909Z"
+    },
+    {
+      "id": "bef68507-7781-441c-bbf2-0574c3e56604",
+      "userId": "4b5d5926-4be5-48f7-941a-ac76b1dfc4b2",
+      "plan": "yearly",
+      "zone": 3,
+      "block": 14,
+      "startDate": "2026-03-28T14:27:59.628Z",
+      "endDate": "2027-03-28T13:27:59.628Z"
+    }
+  ],
   "transactions": [
     {
       "id": "2079e517-f626-44a8-8760-ced924a8e2dc",
@@ -140,6 +189,86 @@
       "amount": 20,
       "description": "Wallet top-up (dev)",
       "createdAt": "2026-03-28T10:29:05.731Z"
+    },
+    {
+      "id": "b1c4a39e-38ae-4340-b318-d19e0514271e",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "debit",
+      "amount": -0.7,
+      "description": "Parking zone 2",
+      "createdAt": "2026-03-28T10:36:39.023Z"
+    },
+    {
+      "id": "0433f6c1-992b-4ad9-99e9-0e8e055c3202",
+      "userId": "7a185bd6-60a9-4420-bd33-b47a41eaf093",
+      "type": "credit",
+      "amount": 20,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T13:37:37.620Z"
+    },
+    {
+      "id": "bed04324-ab21-453e-9c40-60a0f33d4846",
+      "userId": "7a185bd6-60a9-4420-bd33-b47a41eaf093",
+      "type": "debit",
+      "amount": -1.6,
+      "description": "Parking zone 1",
+      "createdAt": "2026-03-28T13:42:58.894Z"
+    },
+    {
+      "id": "f8b7fc9a-fee7-4845-bb6a-5916caff4af9",
+      "userId": "7a185bd6-60a9-4420-bd33-b47a41eaf093",
+      "type": "debit",
+      "amount": -1.6,
+      "description": "Parking zone 1",
+      "createdAt": "2026-03-28T13:43:50.957Z"
+    },
+    {
+      "id": "b1299ad1-856d-4847-86f6-daab1f07b186",
+      "userId": "7a185bd6-60a9-4420-bd33-b47a41eaf093",
+      "type": "debit",
+      "amount": -0.7,
+      "description": "Parking zone 2",
+      "createdAt": "2026-03-28T13:49:15.298Z"
+    },
+    {
+      "id": "5ca2e232-d7c7-4cd4-b260-b304a5990097",
+      "userId": "7a185bd6-60a9-4420-bd33-b47a41eaf093",
+      "type": "debit",
+      "amount": -1.6,
+      "description": "Parking zone 1",
+      "createdAt": "2026-03-28T13:55:33.156Z"
+    },
+    {
+      "id": "49a324ac-fed8-4dc2-b9e5-108ad68b3d37",
+      "userId": "7a185bd6-60a9-4420-bd33-b47a41eaf093",
+      "type": "debit",
+      "amount": -1.6,
+      "description": "Parking zone 1",
+      "createdAt": "2026-03-28T14:04:06.661Z"
+    },
+    {
+      "id": "f3ec12b2-4eb2-4f48-9093-58a78933e5ff",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "type": "debit",
+      "amount": -13.3,
+      "description": "PPK Subscription (monthly, Zona 1, Blok 2)",
+      "createdAt": "2026-03-28T14:24:13.909Z"
+    },
+    {
+      "id": "3f822718-e729-4d22-8637-7f42d908436f",
+      "userId": "4b5d5926-4be5-48f7-941a-ac76b1dfc4b2",
+      "type": "credit",
+      "amount": 100,
+      "description": "Wallet top-up (dev)",
+      "createdAt": "2026-03-28T14:27:39.402Z"
+    },
+    {
+      "id": "ad14993a-3d94-4105-926a-ab74421f0b47",
+      "userId": "4b5d5926-4be5-48f7-941a-ac76b1dfc4b2",
+      "type": "debit",
+      "amount": -39.6,
+      "description": "PPK Subscription (yearly, Zona 3, Blok 14)",
+      "createdAt": "2026-03-28T14:27:59.628Z"
     }
   ],
   "parkingSessions": [
@@ -156,7 +285,98 @@
       "status": "completed",
       "chargeAmount": 0.7,
       "durationMs": 21377
+    },
+    {
+      "id": "a489dfe1-83d2-44d8-8c8c-ebeb4e1c4b4b",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "carId": "b75ea3c8-f474-49e1-83eb-3f72674705d0",
+      "zone": 2,
+      "lat": 45.7926064698,
+      "lon": 15.9230743342,
+      "streetName": "Trpanjska ulica",
+      "startTime": "2026-03-28T10:36:34.965Z",
+      "endTime": "2026-03-28T10:36:39.023Z",
+      "status": "completed",
+      "chargeAmount": 0.7,
+      "durationMs": 4058
+    },
+    {
+      "id": "8270f1e7-3940-430d-8263-3f5af432c3be",
+      "userId": "7a185bd6-60a9-4420-bd33-b47a41eaf093",
+      "carId": "7c990eda-8b76-465b-b2ac-f4c61993dd2d",
+      "zone": 1,
+      "lat": 45.812695294549485,
+      "lon": 15.985119457268972,
+      "streetName": "",
+      "startTime": "2026-03-28T13:42:55.313Z",
+      "endTime": "2026-03-28T13:42:58.894Z",
+      "status": "completed",
+      "chargeAmount": 1.6,
+      "durationMs": 3581
+    },
+    {
+      "id": "4b6971be-4783-407d-871a-add6b26909e8",
+      "userId": "7a185bd6-60a9-4420-bd33-b47a41eaf093",
+      "carId": "7c990eda-8b76-465b-b2ac-f4c61993dd2d",
+      "zone": 1,
+      "lat": 45.6878418,
+      "lon": 15.8514869,
+      "streetName": "Kupinečki Kraljevec, Croatia",
+      "startTime": "2026-03-28T13:43:41.651Z",
+      "endTime": "2026-03-28T13:43:50.956Z",
+      "status": "completed",
+      "chargeAmount": 1.6,
+      "durationMs": 9305
+    },
+    {
+      "id": "684ef23e-8acc-482e-8213-d6e7af30c06b",
+      "userId": "7a185bd6-60a9-4420-bd33-b47a41eaf093",
+      "carId": "7c990eda-8b76-465b-b2ac-f4c61993dd2d",
+      "zone": 2,
+      "lat": 45.6878418,
+      "lon": 15.8514869,
+      "streetName": "Kupinečki Kraljevec, Croatia",
+      "startTime": "2026-03-28T13:43:51.787Z",
+      "endTime": "2026-03-28T13:49:15.298Z",
+      "status": "completed",
+      "chargeAmount": 0.7,
+      "durationMs": 323511
+    },
+    {
+      "id": "135a64c3-693f-4f8b-998a-58de688309b8",
+      "userId": "7a185bd6-60a9-4420-bd33-b47a41eaf093",
+      "carId": "7c990eda-8b76-465b-b2ac-f4c61993dd2d",
+      "zone": 1,
+      "lat": 45.8054251,
+      "lon": 15.9535259,
+      "streetName": "Ul. Otona Kučere 74, 10000, Zagreb, Croatia",
+      "startTime": "2026-03-28T13:50:02.041Z",
+      "endTime": "2026-03-28T13:55:33.155Z",
+      "status": "completed",
+      "chargeAmount": 1.6,
+      "durationMs": 331114
+    },
+    {
+      "id": "75377f6d-e558-449d-98a2-444b04c0b032",
+      "userId": "7a185bd6-60a9-4420-bd33-b47a41eaf093",
+      "carId": "7c990eda-8b76-465b-b2ac-f4c61993dd2d",
+      "zone": 1,
+      "lat": 45.812747953589486,
+      "lon": 15.985316743229987,
+      "streetName": "",
+      "startTime": "2026-03-28T14:04:03.827Z",
+      "endTime": "2026-03-28T14:04:06.661Z",
+      "status": "completed",
+      "chargeAmount": 1.6,
+      "durationMs": 2834
     }
   ],
-  "rewardRedemptions": []
+  "rewardRedemptions": [
+    {
+      "id": "13e2e5d5-d092-45d4-8d8f-2a4198b0ca93",
+      "userId": "e557e7ec-8b8e-4bf8-8ae9-c9fcc65c4181",
+      "rewardId": "wallet_2eur",
+      "createdAt": "2026-03-28T14:26:56.489Z"
+    }
+  ]
 }

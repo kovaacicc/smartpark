@@ -241,3 +241,5 @@ Note: Google Maps API usage is billed after the monthly free tier (28 000 Dynami
 8. Add email notifications (session receipts, subscription expiry).
 9. Rate limit + CORS + HTTPS in production.
 10. Dockerise and deploy.
+
+

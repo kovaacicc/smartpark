@@ -40,7 +40,11 @@ const REWARDS = [
   },
 ];
 
-const SUBSCRIPTION_PRICING = { monthly: 29, yearly: 299 };
+const SUBSCRIPTION_PRICING = {
+  1: { monthly: 13.30, yearly: 159.60 },
+  2: { monthly: 5.30,  yearly: 63.60  },
+  3: { monthly: 3.30,  yearly: 39.60  },
+};
 
 function round2(n) {
   return Math.round(n * 100) / 100;
@@ -50,14 +54,14 @@ function ceilHours(durationMs) {
   return Math.max(1, Math.ceil(durationMs / (1000 * 60 * 60)));
 }
 
-/** Zagreb zone rules: z1 hourly up to 2h then day; z2 up to 3h then day; z3 hourly all day */
+/** Zagreb zone rules — ZagrebParking official rates */
 function baseParkingCharge(zone, durationMs) {
   const z = Number(zone);
   const h = ceilHours(durationMs);
-  if (z === 1) return h <= 2 ? round2(h * 1.6) : 16;
-  if (z === 2) return h <= 3 ? round2(h * 0.7) : 8;
-  if (z === 3) return round2(h * 0.12);
-  return round2(h * 0.12);
+  if (z === 1) return h <= 2 ? round2(h * 1.6) : 13.30;
+  if (z === 2) return h <= 3 ? round2(h * 0.7) : 8.00;
+  if (z === 3) return round2(h * 0.30);
+  return round2(h * 0.30);
 }
 
 function getActiveSubscription(store, userId) {
@@ -69,7 +73,7 @@ function getActiveSubscription(store, userId) {
 
 function sanitizeUser(u) {
   if (!u) return null;
-  const { id, email, name, walletBalance, rewardPoints, freeFirstHour, zone2FourthHourHalf } = u;
+  const { id, email, name, walletBalance, rewardPoints, freeFirstHour, zone2FourthHourHalf, ppkVerified, ppkType } = u;
   return {
     id,
     email,
@@ -78,6 +82,8 @@ function sanitizeUser(u) {
     rewardPoints,
     freeFirstHour: !!freeFirstHour,
     zone2FourthHourHalf: !!zone2FourthHourHalf,
+    ppkVerified: !!ppkVerified,
+    ppkType: ppkType || null,
   };
 }
 
@@ -267,17 +273,20 @@ app.get("/api/subscription", authMiddleware, (req, res) => {
 });
 
 app.post("/api/subscription", authMiddleware, (req, res) => {
-  const { plan } = req.body || {};
+  const { plan, zone, block } = req.body || {};
   if (plan !== "monthly" && plan !== "yearly")
     return res.status(400).json({ error: "plan must be monthly or yearly" });
+  const z = Number(zone) || 1;
+  if (![1, 2, 3].includes(z))
+    return res.status(400).json({ error: "zone must be 1, 2 or 3" });
+  const price = SUBSCRIPTION_PRICING[z][plan];
   try {
-    const price = SUBSCRIPTION_PRICING[plan];
     const sub = mutateStore((store) => {
       const user = store.users.find((u) => u.id === req.userId);
       if (!user) throw new Error("NO_USER");
       if (user.walletBalance < price) throw new Error("INSUFFICIENT");
       user.walletBalance = round2(user.walletBalance - price);
-      addTransaction(store, user.id, "debit", -price, `Subscription (${plan})`);
+      addTransaction(store, user.id, "debit", -price, `PPK Subscription (${plan}, Zona ${z}, Blok ${block || "—"})`);
       const start = new Date();
       const end = new Date(start);
       if (plan === "monthly") end.setMonth(end.getMonth() + 1);
@@ -286,6 +295,8 @@ app.post("/api/subscription", authMiddleware, (req, res) => {
         id: crypto.randomUUID(),
         userId: user.id,
         plan,
+        zone: z,
+        block: block ? Number(block) : null,
         startDate: start.toISOString(),
         endDate: end.toISOString(),
       };
@@ -419,7 +430,7 @@ app.post("/api/parking/stop", authMiddleware, (req, res) => {
   } else {
     // 1-hour free reward: subtract the 1-hour rate for the session zone
     if (user.freeFirstHour) {
-      const oneHourCost = session.zone === 1 ? 1.6 : session.zone === 2 ? 0.7 : 0.12;
+      const oneHourCost = session.zone === 1 ? 1.6 : session.zone === 2 ? 0.7 : 0.30;
       const saving = round2(Math.min(oneHourCost, charge));
       charge = round2(charge - saving);
       breakdown.freeFirstHourApplied = true;
@@ -475,30 +486,78 @@ app.post("/api/parking/stop", authMiddleware, (req, res) => {
   }
 });
 
-app.get("/api/places/search", authMiddleware, async (req, res) => {
-  const q = (req.query.q || "").toString().trim();
-  if (q.length < 3)
-    return res.status(400).json({ error: "Query too short" });
+app.get("/api/places/reverse", authMiddleware, async (req, res) => {
+  const lat = parseFloat(req.query.lat);
+  const lon = parseFloat(req.query.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon))
+    return res.status(400).json({ error: "lat and lon required" });
+  const key = process.env.GOOGLE_MAPS_KEY;
+  if (!key) return res.json({ streetName: "" });
   try {
-    const url = new URL("https://nominatim.openstreetmap.org/search");
-    url.searchParams.set("format", "json");
-    url.searchParams.set("limit", "8");
-    url.searchParams.set("q", `${q}, Zagreb, Croatia`);
-    const r = await fetch(url.toString(), {
-      headers: {
-        "User-Agent": "parking-app/1.0 (portfolio demo)",
-      },
-    });
-    if (!r.ok) throw new Error("nominatim error");
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${key}&language=hr&result_type=street_address|route`;
+    const r = await fetch(url);
     const data = await r.json();
-    const places = data.map((p) => ({
-      label: p.display_name,
-      lat: Number(p.lat),
-      lon: Number(p.lon),
-    }));
-    return res.json({ places });
+    if (data.status !== "OK" || !data.results.length)
+      return res.json({ streetName: "" });
+    const components = data.results[0].address_components;
+    const route = components.find((c) => c.types.includes("route"))?.long_name || "";
+    const number = components.find((c) => c.types.includes("street_number"))?.long_name || "";
+    const streetName = number ? `${route} ${number}` : route;
+    return res.json({ streetName: streetName || data.results[0].formatted_address });
   } catch {
-    return res.status(502).json({ error: "Search failed" });
+    return res.json({ streetName: "" });
+  }
+});
+
+app.post("/api/user/ppk-verify", authMiddleware, (req, res) => {
+  const { ppkType } = req.body || {};
+  if (!["resident", "business"].includes(ppkType))
+    return res.status(400).json({ error: "ppkType must be 'resident' or 'business'" });
+  mutateStore((store) => {
+    const user = store.users.find((u) => u.id === req.userId);
+    if (!user) return;
+    user.ppkVerified = true;
+    user.ppkType = ppkType;
+  });
+  const user = readStore().users.find((u) => u.id === req.userId);
+  return res.json(sanitizeUser(user));
+});
+
+app.get("/api/places/autocomplete", authMiddleware, async (req, res) => {
+  const input = (req.query.input || "").trim();
+  if (!input) return res.json({ predictions: [] });
+  const key = process.env.GOOGLE_MAPS_KEY;
+  if (!key) return res.json({ predictions: [] });
+  try {
+    const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&components=country:hr&language=hr&key=${key}`;
+    const r = await fetch(url);
+    const data = await r.json();
+    if (data.status !== "OK") return res.json({ predictions: [] });
+    return res.json({ predictions: data.predictions });
+  } catch {
+    return res.json({ predictions: [] });
+  }
+});
+
+app.get("/api/places/details", authMiddleware, async (req, res) => {
+  const placeId = (req.query.place_id || "").trim();
+  if (!placeId) return res.status(400).json({ error: "place_id required" });
+  const key = process.env.GOOGLE_MAPS_KEY;
+  if (!key) return res.status(500).json({ error: "Maps key not configured" });
+  try {
+    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=geometry,name,formatted_address&language=hr&key=${key}`;
+    const r = await fetch(url);
+    const data = await r.json();
+    if (data.status !== "OK" || !data.result) return res.status(404).json({ error: "Not found" });
+    const loc = data.result.geometry.location;
+    return res.json({
+      lat: loc.lat,
+      lon: loc.lng,
+      name: data.result.name || data.result.formatted_address,
+      address: data.result.formatted_address,
+    });
+  } catch {
+    return res.status(500).json({ error: "Places API error" });
   }
 });
 
