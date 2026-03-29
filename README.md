@@ -1,245 +1,100 @@
-# Smart Parking — Zagreb
+<div align="center">
 
-A full-stack portfolio web app for smart parking in Zagreb. Combines user accounts, wallet funding, zone-based pricing, subscriptions, a rewards system, and a live parking map.
+# 🅿️ Smart Parking Zagreb
+
+### *One app for a smarter parking experience in Zagreb.*
+
+[![Cursor Hackathon Zagreb](https://img.shields.io/badge/Cursor%20Hackathon-Zagreb%202026-blue?style=flat-square)](https://cursor.com)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
+[![Express](https://img.shields.io/badge/Express-5-000000?style=flat-square&logo=express)](https://expressjs.com)
+[![Google Maps](https://img.shields.io/badge/Google%20Maps-API-4285F4?style=flat-square&logo=googlemaps&logoColor=white)](https://developers.google.com/maps)
+
+</div>
 
 ---
 
-## Quick Start
+## The Problem
 
-```bash
-npm install
-npm start          # runs API on :4000 + CRA dev on :3000 (proxied)
-```
+Parking in Zagreb is more fragmented than it should be. Drivers need to understand parking zones, estimate availability, manage payments, and keep track of subscriptions or permits, often with very little context and too much friction.
 
-Optional — copy `.env.example` to `.env` and fill in secrets before starting.
+That leads to a frustrating experience where people waste time figuring out where to park, how much they will pay, and whether a location is even worth driving to.
 
-```bash
-npm run build                        # production frontend bundle
-npm run generate-streets             # regenerate public/streets_with_parking.json
-CI=true npm test -- --watchAll=false # run tests once
-```
+## The Solution
+
+A single web app that improves the classic city parking flow with a smarter, more user-friendly experience. Instead of being just a payment tool, Smart Parking Zagreb combines parking management, map-based discovery, and crowdsourced context into one place.
+
+Through three core experiences:
+
+- **Crowdsourced occupancy insights** — estimate how busy selected streets and areas are
+- **Interactive parking map** — explore parking zones, selected streets, Street View, and route context
+- **Smart parking flow** — manage wallet balance, parking sessions, subscriptions, and rewards in one app
+
+---
+
+## Demo
+
+📹 **[SmartPark.mp4](SmartPark.mp4)** — watch the full demo
+
+---
+
+## Features
+
+| | Feature | Description |
+|---|---|---|
+| 🗺️ | **Interactive parking map** | Explore Zagreb parking zones, streets, selected locations, and nearby context on Google Maps |
+| 📊 | **Crowdsourced occupancy insights** | View estimated occupancy and available spots for selected streets and areas |
+| 💳 | **Wallet payments** | Top up balance and use it to pay for parking sessions |
+| ⏱️ | **Parking session flow** | Start and stop parking sessions directly from the app |
+| 🎁 | **Rewards system** | Earn and redeem perks tied to parking activity and account usage |
+| 🏙️ | **Zone-aware pricing** | Pricing logic follows Zagreb parking zone rules |
+| 🔐 | **User accounts** | Sign in and manage parking actions through an authenticated profile |
+| 🧭 | **Street View and directions** | Get better context before parking and open directions quickly |
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend | React 19, Create React App, React Router 6 |
-| Styling | Custom CSS (`src/App.css`) |
-| Map | Leaflet + leaflet.heat (see migration note below) |
-| Backend | Node.js + Express 5 |
-| Auth | JWT (30-day tokens stored in localStorage) |
-| Passwords | bcryptjs |
-| Payments | Stripe SDK (dev fallback when `STRIPE_SECRET_KEY` absent) |
-| Persistence | JSON flat-file (`server/data/store.json`) |
-| Dev workflow | concurrently (frontend + backend together) |
-
----
-
-## Project Structure
-
-```
-parkingApp/
-├── public/
-│   ├── index.html
-│   └── streets_with_parking.json     # heatmap + suggestion dataset (generated)
-├── scripts/
-│   └── generate-streets.js           # synthesises streets_with_parking.json
-├── server/
-│   ├── data/store.json               # live app state (users, sessions, etc.)
-│   ├── db.js                         # readStore / mutateStore helpers
-│   └── index.js                      # Express API
-├── src/
-│   ├── App.js                        # all frontend routes + components
-│   ├── App.css                       # single main stylesheet
-│   ├── App.test.js
-│   ├── index.js
-│   ├── index.css
-│   └── setupTests.js
-└── package.json
+```text
+Backend    →  Node.js · Express
+Frontend   →  React · React Router · CSS
+Maps       →  Google Maps API
+Auth       →  JWT
+Payments   →  Wallet flow + optional Stripe integration
+Data       →  JSON store + generated street occupancy dataset
 ```
 
 ---
 
-## Zagreb Parking Pricing (live in backend)
+## Getting Started
 
-| Zone | Hourly rate | Max hourly | Day cap |
-|---|---|---|---|
-| Zone 1 | €1.60 / h | 2 hours | €16.00 flat |
-| Zone 2 | €0.70 / h | 3 hours | €8.00 flat |
-| Zone 3 | €0.12 / h | no cap | charged hourly all day |
+```bash
+# 1. Install dependencies
+npm install
 
-Charge is deducted from wallet balance when a session is stopped. Active subscriptions zero the charge. Reward "free next session" also zeros it.
+# 2. Configure environment
+cp .env.example .env
 
----
-
-## Environment Variables
-
-Create a `.env` file in the project root:
-
-```
-PORT=4000
-JWT_SECRET=replace-with-a-long-random-string
-STRIPE_SECRET_KEY=sk_test_...          # omit to use dev credit mode
-REACT_APP_GOOGLE_MAPS_KEY=AIza...      # needed for Google Maps migration (see below)
+# 3. Run the app
+npm start
 ```
 
----
+Then open:
 
-## API Reference
-
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| POST | `/api/register` | — | Create account, returns JWT |
-| POST | `/api/login` | — | Login, returns JWT |
-| GET | `/api/user` | JWT | Get current user profile |
-| PUT | `/api/user` | JWT | Update name / email |
-| GET | `/api/cars` | JWT | List user vehicles |
-| POST | `/api/cars` | JWT | Add vehicle |
-| DELETE | `/api/cars/:id` | JWT | Remove vehicle |
-| GET | `/api/wallet` | JWT | Balance + transaction history |
-| POST | `/api/wallet/add` | JWT | Top up wallet (Stripe or dev) |
-| GET | `/api/subscription` | JWT | Active subscription info |
-| POST | `/api/subscription` | JWT | Purchase monthly/yearly pass |
-| GET | `/api/rewards` | JWT | Points, catalog, redemption history |
-| POST | `/api/rewards/redeem` | JWT | Redeem a reward by ID |
-| GET | `/api/parking/session` | JWT | Active session (if any) |
-| POST | `/api/parking/start` | JWT | Start parking session |
-| POST | `/api/parking/stop` | JWT | Stop session + charge wallet |
-| GET | `/api/places/search?q=` | JWT | Nominatim address lookup |
-| GET | `/api/health` | — | Server liveness check |
+- Frontend: `http://localhost:4001`
+- Backend API: `http://localhost:4000`
 
 ---
 
----
+<div align="center">
 
-# Fixes Needed & Future Updates
+Built with ❤️ at the **Cursor Hackathon Zagreb** · March 28, 2026
 
-> This section tracks known issues, incomplete features, and planned improvements.
-> Items are grouped by area and ordered roughly by priority.
-
----
-
-## 3. Rewards System
-
-### Bugs / Gaps to fix
-
-- **Rewards catalog is hardcoded in `server/index.js`.** Adding or changing rewards requires a code deploy.
-- **Points accumulation logic is scattered.** Points are added in four places (registration, wallet top-up, subscription purchase, parking stop). If any path is missed, points go out of sync.
-- **The `pendingParkingDiscountPercent` is wiped after any session end with a discount, even if the discount was only partial.** If a user has a 30% reward and the charge is €0.20, the full discount field is cleared.
-- **No expiry on reward redemptions.** A "free next session" reward can sit indefinitely.
-- **Reward IDs are magic strings.** No enum or constant prevents typos between frontend and backend.
-
-### Planned improvements
-
-- **Tiered loyalty levels**: Bronze (0–499 pts), Silver (500–1999 pts), Gold (2000+ pts). Each tier unlocks:
-  - Bronze — basic catalog.
-  - Silver — +5% bonus points on every parking session, exclusive reward "30 min free".
-  - Gold — +10% bonus points, "3-day free pass" reward, priority map pin colour.
-- **Streak bonuses**: park 5 days in a row → earn double points for a day.
+*Theme: Build Something Zagreb Wants*
 
 ---
 
-## 4. Map — Colors, Provider, Pins, Locations
+**Team**
 
-### Bugs / Gaps to fix
+[Borna Oršulić](https://www.linkedin.com/in/borna-or%C5%A1uli%C4%87-1680aa370/) · [Karlo Kovačić](https://www.linkedin.com/in/karlo-kovacic-05a550387/)
 
-- **Map uses OpenStreetMap tiles via CartoDB Dark.** The tile styling does not match the app brand and can feel inconsistent.
-- **Leaflet heatmap color defaults (blue → red) are not customised.** Low-occupancy streets and high-occupancy streets are hard to distinguish on the dark background.
-- **The CSS pin marker (`.pin-marker`) only appears for the manually selected street.** There are no markers for POIs, the user's GPS location, or active parking sessions.
-- **No GPS "you are here" marker.** Calling "Use GPS" pans the map but leaves no persistent dot.
-- **Street suggestion list disappears on mobile when the map pops into the second grid row.** The sidebar layout breaks below 840px.
-- **`leaflet.heat` has no TypeScript types and its CDN integrity hash is not pinned.** Minor, but noticeable in a production build.
-- **Zone boundaries are not shown on the map.** Users must remember which zone their street falls in.
-
-### Planned: Migrate to Google Maps
-
-Switching from Leaflet to Google Maps API requires:
-
-1. Add `REACT_APP_GOOGLE_MAPS_KEY=AIza...` to `.env`.
-2. Install `@vis.gl/react-google-maps` (the official Google Maps React wrapper).
-3. Replace the Leaflet tile layer + heatmap with:
-   - `<APIProvider apiKey={...}>` wrapping the map.
-   - `<Map>` component with `mapId` pointing to a custom dark-style Map ID (created in the Google Cloud Console under "Map Styles").
-   - `<HeatmapLayer>` from the `@vis.gl/react-google-maps/libraries/visualization` entrypoint.
-4. Replace the CSS pin with a `<AdvancedMarker>` using a custom `<Pin>` component (supports custom colours, glyphs, scale).
-5. Add dedicated marker types:
-   - **GPS pin** (blue pulsing dot) — `AdvancedMarker` at GPS coords with a pulsing CSS animation.
-   - **Selected street pin** (pink/rose, current brand color) — `AdvancedMarker` dropped on pick.
-   - **Active session pin** (green) — shown on the map while a session is running.
-   - **Suggested streets** (grey ghost pins) — lightweight markers for top 5 suggestions.
-6. Heatmap gradient should be customised: grey (0% occupancy) → yellow → orange → red (100%).
-7. Add a Google Places Autocomplete input (replaces the current Nominatim fallback). Requires `places` library from the Maps JS API.
-8. Show Zagreb zone boundaries as polygon overlays (`<Polygon>`) with zone-colored fills (semi-transparent).
-9. Map style: use a Cloud-based map style ("night" theme with parking zones highlighted). 
-
-Note: Google Maps API usage is billed after the monthly free tier (28 000 Dynamic Map loads / month). For a portfolio demo this is usually free. Set a billing alert in Google Cloud Console.
-
----
-
-## 5. Subscriptions — Clarify & Improve
-
-### What the subscription does right now
-
-- A **monthly pass (€29)** or **yearly pass (€299)** is purchased from wallet balance.
-- While a subscription is active, the `POST /api/parking/stop` endpoint sets `charge = 0` — the user parks for free in **any zone**.
-- Points bonus: +50 for monthly purchase, +200 for yearly.
-- Only one subscription can be active at a time (the backend checks `endDate > now`).
-- There is no UI showing how many days remain or an auto-renew option.
-
-### Gaps / confusions
-
-- **Subscription does not check the zone.** A monthly pass zeroes out Zone 1 (normally €16/day) equally with Zone 3 (normally €0.12/h). This may be intentional (unlimited pass) but should be documented as a business decision.
-- **"Paid zones" from the city of Zagreb** — Zagreb has a physical zone permit system where residents can buy annual resident permits for their home zone. This app does not yet model resident permits. There are two options:
-  - **Option A (simple)**: Add a "resident permit" flag per user-zone pair (e.g. `userZones: [{ zone: 1, permit: "resident", validUntil: "..." }]`). On parking stop, if the session zone matches a permit zone, charge is zeroed without consuming the subscription.
-  - **Option B (accurate)**: Mirror the real Zagreb permit tiers — `D1` (downtown resident), `D2`, `D3` — and map them to zones. Only D-tier permit in matching zone gets free parking.
-- **No subscription reminder.** Users get no notification 3 days before expiry.
-- **Subscription purchased mid-session does not retroactively zero the charge.** If you subscribe while parked and then stop, the subscription check fires after the stop, which is correct, but this edge case is not tested.
-
-### Planned improvements
-
-- Add **`GET /api/subscription/history`** to list past and expired subscriptions.
-- Add a **zone-scoped resident permit** model (Option A above) with `POST /api/subscription/resident-permit`.
-- Show a **"Days remaining" countdown** bar on the dashboard subscription card.
-- Add **auto-renew** flag + a scheduled job (e.g. `node-cron`) to renew and deduct from wallet automatically.
-- Send an **expiry reminder** via email (nodemailer) 3 and 1 days before end date.
-- Subscription card on dashboard should show the exact zones it covers (all three for now, or per-zone for resident permits).
-- Yearly plan should show projected savings vs monthly (e.g. "saves €49 vs monthly").
-
----
-
-## 6. General / Infrastructure
-
-| Item | Status | Notes |
-|---|---|---|
-| Flat-file JSON persistence | Working, dev-only | Migrate to PostgreSQL + Prisma when going to production |
-| Stripe Elements frontend | Missing | Backend is ready; frontend needs `@stripe/react-stripe-js` |
-| Push / email notifications | Missing | Add nodemailer + SendGrid for session receipts and expiry reminders |
-| Rate limiting | Missing | Add `express-rate-limit` to auth routes |
-| CORS | Not configured | Add `cors` middleware with an explicit allow-list |
-| HTTPS in dev | Scripts exist | `scripts/generate-dev-cert.sh` — run once, then use `npm run start:https` |
-| Admin dashboard | Missing | Route for viewing all sessions, users, revenue |
-| Docker | Missing | Add `Dockerfile` + `docker-compose.yml` for local + prod |
-| Deployment | Not done | Suitable targets: Railway, Render, or VPS with PM2 |
-| ESLint / Prettier | Partial | CRA provides ESLint; add Prettier config for consistent formatting |
-| TypeScript | Not adopted | Gradually migrate `server/` to TypeScript with `ts-node` |
-| Accessibility | Partial | Add `aria-label` to icon buttons; check color contrast on badge/hint text |
-| Dark/light mode toggle | Missing | CSS variables for color tokens; `prefers-color-scheme` media query |
-
----
-
-## 7. Suggested Implementation Order
-
-1. Fix auth form validation + error UX (fast, high user impact).
-2. Replace map with Google Maps + custom heatmap gradient + zone polygons.
-3. Rebuild wallet top-up UI with payment method tabs (Apple Pay/Google Pay come "free" via Stripe Elements).
-4. Add Aircash redirect tab.
-5. Clarify and document subscription/zone rules; add resident permit model.
-6. Build tiered rewards system + progress UI.
-7. Migrate persistence to PostgreSQL.
-8. Add email notifications (session receipts, subscription expiry).
-9. Rate limit + CORS + HTTPS in production.
-10. Dockerise and deploy.
-
-
+</div>

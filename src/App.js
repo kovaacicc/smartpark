@@ -27,7 +27,7 @@ import {
 } from "@react-google-maps/api";
 import "./App.css";
 
-const GMAPS_KEY = "REDACTED";
+const GMAPS_KEY = process.env.REACT_APP_GOOGLE_MAPS_KEY || "";
 const GMAPS_LIBS = ["visualization", "places"];
 
 const ZONE_COLORS = { 1: "#ef4444", 2: "#eab308", 3: "#22c55e" };
@@ -1669,6 +1669,14 @@ function AppShell() {
 }
 
 export default function App() {
+  if (!GMAPS_KEY) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
+        <p>Missing Google Maps API key. Add `REACT_APP_GOOGLE_MAPS_KEY` to `.env`.</p>
+      </div>
+    );
+  }
+
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: GMAPS_KEY,
     libraries: GMAPS_LIBS,
